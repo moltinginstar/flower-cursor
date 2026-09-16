@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.DS_Store
+
+# Generated render output
+assets/rendered/
+assets/previews/
+
+# Blender state and backups
+*.blend1
+*.blend2
+blender/.cache/
+
+# Local Kitty experiments
+kitty/local.conf
