@@ -75,6 +75,11 @@ STYLES = {
 
 STYLE_NAME = os.environ.get("FLOWER_STYLE", "coral_anemone")
 STYLE = STYLES.get(STYLE_NAME, STYLES["coral_anemone"])
+RENDER_DIR = Path(os.environ.get("FLOWER_RENDER_DIR", str(ROOT / "assets" / "renders")))
+MANIFEST_PATH = Path(
+    os.environ.get("FLOWER_MANIFEST_PATH", str(ROOT / "assets" / "renders" / "manifest.json"))
+)
+SAVE_BLEND = os.environ.get("FLOWER_SAVE_BLEND", "1") != "0"
 
 
 def clamp01(value: float) -> float:
@@ -171,8 +176,8 @@ def write_manifest() -> None:
                 **({"idle_phase": pose["idle_phase"]} if "idle_phase" in pose else {}),
             }
         )
-    manifest_path = ROOT / "assets" / "renders" / "manifest.json"
-    manifest_path.write_text(
+    MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MANIFEST_PATH.write_text(
         json.dumps(
             {
                 "style": STYLE.name,
@@ -567,7 +572,7 @@ def main(pose_name: str) -> None:
     if pose_name not in POSES:
         raise ValueError(f"unknown pose: {pose_name}")
     pose = POSES[pose_name]
-    render_path = ROOT / "assets" / "renders" / f"flower_{pose_name}.png"
+    render_path = RENDER_DIR / f"flower_{pose_name}.png"
     render_path.parent.mkdir(parents=True, exist_ok=True)
     clear_scene()
 
@@ -609,7 +614,7 @@ def main(pose_name: str) -> None:
     add_camera()
     add_lights()
     scene = configure_render(render_path)
-    if pose_name == "mature":
+    if pose_name == "mature" and SAVE_BLEND:
         bpy.ops.wm.save_as_mainfile(filepath=str(BLEND_PATH), check_existing=False)
     write_manifest()
     bpy.ops.render.render(write_still=True)
