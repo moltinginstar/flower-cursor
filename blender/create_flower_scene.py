@@ -126,7 +126,7 @@ def channels(
         "maturity": bloom,
         "collapse": smoothstep((0.50 - vitality) / 0.46),
         "petal_curl": smoothstep((0.86 - vitality) / 0.76),
-        "retraction": smoothstep((0.018 - vitality) / 0.014),
+        "retraction": smoothstep((0.038 - vitality) / 0.018),
     }
 
 

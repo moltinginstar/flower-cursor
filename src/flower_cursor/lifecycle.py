@@ -62,7 +62,7 @@ class FlowerPose:
 
     @property
     def retraction(self) -> float:
-        return _smoothstep((0.018 - self.vitality) / 0.014)
+        return _smoothstep((0.038 - self.vitality) / 0.018)
 
 
 @dataclass(slots=True)
@@ -177,7 +177,7 @@ class FlowerInstance:
 
     @property
     def dead(self) -> bool:
-        return not self.active and self._vitality.value < 0.004
+        return not self.active and self._vitality.value < 0.020
 
 
 class FlowerLifecycle:

@@ -75,12 +75,15 @@ def test_exit_folds_before_retracting_without_an_opacity_fade() -> None:
     assert [p.collapse for p in poses] == sorted(p.collapse for p in poses)
     assert flower.dead
     assert flower.pose.retraction == 1
+    assert len(poses) / 60 == pytest.approx(1.0, abs=1 / 60)
+    first_fold = next(i + 1 for i, pose in enumerate(poses) if pose.collapse == 1)
+    assert first_fold / 60 == pytest.approx(0.85, abs=1 / 60)
     assert flower.pose.stem > 0.9
     assert flower not in lifecycle.flowers
 
 
 @pytest.mark.parametrize("warmup", [0.25, 0.55, 2.0])
-@pytest.mark.parametrize("departure", [0.1, 0.5, 0.9, 1.15])
+@pytest.mark.parametrize("departure", [0.1, 0.5, 0.9, 0.95])
 def test_returning_reverses_same_flower_without_resetting_state(
     warmup: float, departure: float,
 ) -> None:
@@ -105,6 +108,19 @@ def test_returning_reverses_same_flower_without_resetting_state(
     advance(lifecycle, 2.0)
     assert returned.pose.bloom > 0.99
     assert returned.pose.petal_curl == 0
+
+
+def test_return_after_departure_has_finished_creates_a_new_bud() -> None:
+    lifecycle = FlowerLifecycle()
+    old = lifecycle.move_to(A)
+    advance(lifecycle, 2.0)
+    lifecycle.move_to(B)
+    advance(lifecycle, 1.05)
+    assert old.dead
+    returned = lifecycle.move_to(A)
+    assert returned is not old
+    assert returned.identifier != old.identifier
+    assert returned.pose.stem == returned.pose.bloom == 0
 
 
 def test_repeated_reversals_keep_the_existing_instances() -> None:
