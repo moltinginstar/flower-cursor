@@ -24,6 +24,9 @@ class PoseAsset:
     head_lean: float = 0.0
     stem_bend: float = 0.0
     maturity: float = 0.0
+    collapse: float = 0.0
+    petal_curl: float = 0.0
+    retraction: float = 0.0
 
 
 class PoseLibrary:
@@ -52,6 +55,9 @@ class PoseLibrary:
                 head_lean=item.get("head_lean", 0.0),
                 stem_bend=item.get("stem_bend", 0.0),
                 maturity=item.get("maturity", item.get("bloom", 0.0)),
+                collapse=item.get("collapse", 0.0),
+                petal_curl=item.get("petal_curl", 0.0),
+                retraction=item.get("retraction", 0.0),
             )
             for item in data["poses"]
         )
@@ -114,6 +120,9 @@ class PoseLibrary:
                     + 0.75 * (asset.petal_open - pose.petal_open) ** 2
                     + 0.5 * (asset.head_lean - pose.head_lean) ** 2
                     + 0.6 * (asset.stem_bend - pose.stem_bend) ** 2
+                    + (asset.collapse - pose.collapse) ** 2
+                    + 0.25 * (asset.petal_curl - pose.petal_curl) ** 2
+                    + 2.0 * (asset.retraction - pose.retraction) ** 2
                 )
             return score_value
 

@@ -50,7 +50,19 @@ class FlowerPose:
 
     @property
     def opacity(self) -> float:
-        return _smoothstep(self.vitality / 0.14)
+        return 1.0
+
+    @property
+    def collapse(self) -> float:
+        return _smoothstep((0.50 - self.vitality) / 0.46)
+
+    @property
+    def petal_curl(self) -> float:
+        return _smoothstep((0.86 - self.vitality) / 0.76)
+
+    @property
+    def retraction(self) -> float:
+        return _smoothstep((0.018 - self.vitality) / 0.014)
 
 
 @dataclass(slots=True)
@@ -157,11 +169,9 @@ class FlowerInstance:
         else:
             self._bloom.step(0.0, duration)
             self._vitality.step(0.0, duration)
-            wither_amount = 1.0 - _clamp01(self._vitality.value)
-            collapse = _smoothstep((wither_amount - 0.90) / 0.10)
-            self._stem.step(self._stem.value * (1.0 - collapse), duration)
+            self._stem.step(self._stem.value, duration)
             self._maturity.step(self._maturity.value, duration)
-            leaf_target = self._leaf.value * (1.0 - 0.25 * collapse)
+            leaf_target = self._leaf.value
         self._leaf.step(_clamp01(leaf_target), duration)
         self.idle_phase = (self.idle_phase + duration * 1.7) % math.tau
 
