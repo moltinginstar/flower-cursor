@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .graphics_renderer import FlowerRenderer
 from .lifecycle import CursorCell
+from .output_arbiter import OutputArbiter
 from .pty_runner import run
 from .runtime import FlowerCursorRuntime
 
@@ -54,7 +55,15 @@ def main(argv: list[str] | None = None) -> int:
     current_cell: CursorCell | None = None
     runtime = FlowerCursorRuntime() if args.render else None
     output = sys.stdout.buffer
-    renderer = FlowerRenderer(runtime.pose_library, output.write) if runtime is not None else None
+
+    def write_output(data: bytes) -> None:
+        output.write(data)
+        output.flush()
+
+    output_arbiter = OutputArbiter(write_output)
+    renderer = (
+        FlowerRenderer(runtime.pose_library, output_arbiter.write) if runtime is not None else None
+    )
 
     def on_cursor(cell: CursorCell) -> None:
         nonlocal current_cell, previous
@@ -94,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
             on_tick=on_tick if runtime is not None else None,
             on_close=close_graphics if renderer is not None else None,
             on_output=renderer.observe_terminal_output if renderer is not None else None,
+            output_arbiter=output_arbiter,
             query_interval=args.interval,
             tick_interval=args.render_interval,
             hide_cursor=renderer is not None,

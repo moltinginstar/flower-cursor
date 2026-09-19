@@ -16,6 +16,7 @@ from collections.abc import Callable, Sequence
 from .cursor_report import CursorReportParser
 from .cursor_visibility import CURSOR_HIDE, CURSOR_SHOW, CursorVisibilityFilter
 from .lifecycle import CursorCell
+from .output_arbiter import OutputArbiter
 
 _CPR_QUERY = b"\x1b[6n"
 
@@ -44,6 +45,7 @@ def run(
     on_tick: Callable[[float], None] | None = None,
     on_close: Callable[[], None] | None = None,
     on_output: Callable[[bytes], None] | None = None,
+    output_arbiter: OutputArbiter | None = None,
     query_interval: float = 1 / 30,
     tick_interval: float = 1 / 60,
     hide_cursor: bool = False,
@@ -66,6 +68,7 @@ def run(
         os.execvp(command[0], list(command))
 
     parser = CursorReportParser()
+    output_arbiter = output_arbiter or OutputArbiter(lambda data: _write_all(stdout_fd, data))
     selector = selectors.DefaultSelector()
     child_queries_pending = 0
     child_output_tail = b""
@@ -85,16 +88,20 @@ def run(
     try:
         tty.setraw(stdin_fd, termios.TCSAFLUSH)
         if cursor_visibility is not None:
-            _write_all(stdout_fd, CURSOR_HIDE)
+            output_arbiter.write(CURSOR_HIDE)
         _sync_window_size(master_fd, stdin_fd)
         selector.register(stdin_fd, selectors.EVENT_READ, "stdin")
         selector.register(master_fd, selectors.EVENT_READ, "master")
         while True:
             now = time.monotonic()
-            deadlines = [next_query]
-            if on_tick is not None:
-                deadlines.append(next_tick)
-            timeout = max(0.0, min(deadlines) - now)
+            if output_arbiter.can_write:
+                deadlines = [next_query]
+                if on_tick is not None:
+                    deadlines.append(next_tick)
+            else:
+                recovery_deadline = output_arbiter.recovery_deadline
+                deadlines = [recovery_deadline] if recovery_deadline is not None else []
+            timeout = max(0.0, min(deadlines) - now) if deadlines else None
             events = selector.select(timeout)
             for key, _mask in events:
                 if key.data == "stdin":
@@ -126,7 +133,7 @@ def run(
                         else raw_data
                     )
                     if data:
-                        _write_all(stdout_fd, data)
+                        output_arbiter.feed_child(data)
                         if on_output is not None:
                             on_output(data)
                     child_output = child_output_tail + raw_data
@@ -137,13 +144,14 @@ def run(
                 _sync_window_size(master_fd, stdin_fd)
                 resize_pending = False
             now = time.monotonic()
-            if on_tick is not None and now >= next_tick:
+            output_arbiter.poll(now)
+            if on_tick is not None and now >= next_tick and output_arbiter.can_write:
                 on_tick(now - last_tick)
                 last_tick = now
                 missed_ticks = max(1, math.ceil((now - next_tick) / tick_interval))
                 next_tick += missed_ticks * tick_interval
-            if now >= next_query:
-                _write_all(stdout_fd, _CPR_QUERY)
+            if now >= next_query and output_arbiter.can_write:
+                output_arbiter.write(_CPR_QUERY)
                 next_query = now + query_interval
             waited_pid, status = os.waitpid(child_pid, os.WNOHANG)
             if waited_pid == child_pid:
@@ -152,7 +160,8 @@ def run(
         if cursor_visibility is not None:
             pending = cursor_visibility.flush()
             if pending:
-                _write_all(stdout_fd, pending)
+                output_arbiter.feed_child(pending)
+        output_arbiter.finish_child()
         _terminate_child(child_pid)
         try:
             os.waitpid(child_pid, 0)
@@ -163,7 +172,7 @@ def run(
                 on_close()
         finally:
             if cursor_visibility is not None:
-                _write_all(stdout_fd, CURSOR_SHOW)
+                output_arbiter.write(CURSOR_SHOW)
         selector.close()
         os.close(master_fd)
         signal.signal(signal.SIGWINCH, resize_handler)
