@@ -1,11 +1,15 @@
-"""Render lifecycle visuals as independent Kitty graphics placements."""
+"""Render blended lifecycle visuals as independent Kitty graphics placements."""
 
 from __future__ import annotations
 
-import math
+import io
+import re
 from collections.abc import Callable
 
-from .kitty_graphics import delete_placement, place_image, transmit_png
+from PIL import Image
+
+from .compositor import FlowerCompositor
+from .kitty_graphics import delete_placement, transmit_png
 from .lifecycle import CursorCell
 from .pose_library import PoseLibrary
 from .runtime import FlowerVisual
@@ -36,138 +40,87 @@ class FlowerRenderer:
         self._anchor_columns = anchor_columns
         self._anchor_rows = anchor_rows
         self._z_index = z_index
-        self._placements: dict[int, tuple[CursorCell, str, int, int]] = {}
-        self._png_cache: dict[str, bytes] = {}
-        self._asset_image_ids: dict[str, int] = {}
-        self._transmitted_assets: set[str] = set()
+        self._placements: dict[int, tuple[CursorCell, bytes, int]] = {}
+        self._compositor = FlowerCompositor()
+        self._output_tail = b""
+        self._cell_size = (8, 16)
 
-    def render(self, visuals: tuple[FlowerVisual, ...], current_cell: CursorCell) -> None:
+    def observe_terminal_output(self, data: bytes) -> None:
+        previous_length = len(self._output_tail)
+        combined = self._output_tail + data
+        resets = re.finditer(rb"\x1b(?:c|\[(?:[23]J|\?(?:47|1047|1049)[hl]))", combined)
+        if any(match.end() > previous_length for match in resets):
+            self._placements.clear()
+        self._output_tail = combined[-32:]
+
+    def render(
+        self,
+        visuals: tuple[FlowerVisual, ...],
+        current_cell: CursorCell,
+        duration: float = 1 / 60,
+        cell_size: tuple[int, int] | None = None,
+    ) -> None:
+        geometry_changed = cell_size is not None and cell_size != self._cell_size
+        if cell_size is not None and min(cell_size) > 0:
+            self._cell_size = cell_size
+        cell_width, cell_height = self._cell_size
+        # Kitty subtracts X/Y offsets from a c/r rectangle's pixel dimensions.
+        width = self._columns * cell_width - min(8, cell_width - 1)
+        y_offset = min(2, cell_height - 1)
+        height = self._rows * cell_height - y_offset
+        root_x = self.pose_library.root_anchor[0] * width
+        horizontal_offset = round(self._anchor_columns * cell_width - root_x)
         visible_ids = {visual.identifier for visual in visuals}
         for visual in visuals:
+            frame = self._compositor.frame(visual, duration)
+            frame = frame.convert("RGBa").resize((width, height), Image.Resampling.LANCZOS).convert("RGBA")
+            left = (visual.cell.column - self._anchor_columns) * cell_width + horizontal_offset
+            column, x_offset = divmod(max(0, left), cell_width)
+            if left < 0:
+                frame = frame.crop((-left, 0, width, height))
+            target = CursorCell(max(0, visual.cell.row - self._anchor_rows), column)
+            pixels = frame.tobytes()
             previous = self._placements.get(visual.identifier)
-            x_offset, y_offset = self._idle_offsets(visual)
-            current = (visual.cell, str(visual.asset.path), x_offset, y_offset)
-            if previous == current:
+            if not geometry_changed and previous is not None and previous[:2] == (visual.cell, pixels):
                 continue
-            if previous is not None and previous[:2] == current[:2]:
-                self._reposition(visual, current_cell, x_offset, y_offset)
-            else:
-                self._place(visual, current_cell, x_offset, y_offset)
-            self._placements[visual.identifier] = current
+            image_base = 0x10000000 + visual.identifier * 2
+            image_id = image_base if previous is None or previous[2] != image_base else image_base + 1
+            buffer = io.BytesIO()
+            frame.save(buffer, format="PNG", compress_level=1)
+            self._write(b"\x1b[s")
+            self._move_cursor(target)
+            transmit_png(
+                buffer.getvalue(),
+                image_id=image_id,
+                placement_id=visual.identifier,
+                x_offset=x_offset,
+                y_offset=y_offset,
+                z_index=self._z_index,
+                write=self._write,
+            )
+            if previous is not None:
+                delete_placement(
+                    image_id=previous[2], placement_id=visual.identifier,
+                    free_data=True, write=self._write,
+                )
+            self._write(b"\x1b[u")
+            self._placements[visual.identifier] = (visual.cell, pixels, image_id)
 
         for identifier in set(self._placements) - visible_ids:
-            _, asset_key, _, _ = self._placements[identifier]
             delete_placement(
-                image_id=self._asset_image_id(asset_key),
-                placement_id=identifier,
-                write=self._write,
+                image_id=self._placements[identifier][2], placement_id=identifier,
+                free_data=True, write=self._write,
             )
             del self._placements[identifier]
+        self._compositor.retain(visible_ids)
 
     def clear(self) -> None:
-        for identifier, (_, asset_key, _, _) in tuple(self._placements.items()):
+        for identifier, (_, _, image_id) in tuple(self._placements.items()):
             delete_placement(
-                image_id=self._asset_image_id(asset_key),
-                placement_id=identifier,
-                write=self._write,
+                image_id=image_id, placement_id=identifier, free_data=True, write=self._write,
             )
         self._placements.clear()
+        self._compositor.retain(set())
 
-    def _place(
-        self,
-        visual: FlowerVisual,
-        current_cell: CursorCell,
-        x_offset: int,
-        y_offset: int,
-    ) -> None:
-        target = CursorCell(
-            row=max(0, visual.cell.row - self._anchor_rows),
-            column=max(0, visual.cell.column - self._anchor_columns),
-        )
-        self._write(b"\x1b[s")
-        self._move_cursor(current_cell, target)
-        previous = self._placements.get(visual.identifier)
-        asset_key = str(visual.asset.path)
-        if previous is not None and previous[1] != asset_key:
-            delete_placement(
-                image_id=self._asset_image_id(previous[1]),
-                placement_id=visual.identifier,
-                write=self._write,
-            )
-        image_id = self._asset_image_id(asset_key)
-        if asset_key in self._transmitted_assets:
-            place_image(
-                image_id=image_id,
-                placement_id=visual.identifier,
-                columns=self._columns,
-                rows=self._rows,
-                x_offset=x_offset,
-                y_offset=y_offset,
-                z_index=self._z_index,
-                write=self._write,
-            )
-        else:
-            png = self._png_cache.setdefault(asset_key, visual.asset.path.read_bytes())
-            transmit_png(
-                png,
-                image_id=image_id,
-                placement_id=visual.identifier,
-                columns=self._columns,
-                rows=self._rows,
-                x_offset=x_offset,
-                y_offset=y_offset,
-                z_index=self._z_index,
-                write=self._write,
-            )
-            self._transmitted_assets.add(asset_key)
-        self._write(b"\x1b[u")
-
-    def _reposition(
-        self,
-        visual: FlowerVisual,
-        current_cell: CursorCell,
-        x_offset: int,
-        y_offset: int,
-    ) -> None:
-        target = CursorCell(
-            row=max(0, visual.cell.row - self._anchor_rows),
-            column=max(0, visual.cell.column - self._anchor_columns),
-        )
-        self._write(b"\x1b[s")
-        self._move_cursor(current_cell, target)
-        place_image(
-            image_id=self._asset_image_id(str(visual.asset.path)),
-            placement_id=visual.identifier,
-            columns=self._columns,
-            rows=self._rows,
-            x_offset=x_offset,
-            y_offset=y_offset,
-            z_index=self._z_index,
-            write=self._write,
-        )
-        self._write(b"\x1b[u")
-
-    @staticmethod
-    def _idle_offsets(visual: FlowerVisual) -> tuple[int, int]:
-        horizontal = round(visual.pose.idle_sway * 18)
-        vertical = round(math.sin(visual.pose.idle_phase) * 0.8 * visual.pose.vitality)
-        return max(0, min(12, 8 + horizontal)), max(1, min(3, 2 + vertical))
-
-    def _move_cursor(self, source: CursorCell, target: CursorCell) -> None:
-        row_delta = target.row - source.row
-        column_delta = target.column - source.column
-        if row_delta < 0:
-            self._write(f"\x1b[{-row_delta}A".encode("ascii"))
-        elif row_delta > 0:
-            self._write(f"\x1b[{row_delta}B".encode("ascii"))
-        if column_delta < 0:
-            self._write(f"\x1b[{-column_delta}D".encode("ascii"))
-        elif column_delta > 0:
-            self._write(f"\x1b[{column_delta}C".encode("ascii"))
-
-    def _asset_image_id(self, asset_key: str) -> int:
-        image_id = self._asset_image_ids.get(asset_key)
-        if image_id is None:
-            image_id = 1000 + len(self._asset_image_ids)
-            self._asset_image_ids[asset_key] = image_id
-        return image_id
+    def _move_cursor(self, target: CursorCell) -> None:
+        self._write(f"\x1b[{target.row + 1};{target.column + 1}H".encode("ascii"))

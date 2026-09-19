@@ -14,6 +14,7 @@ class FlowerVisual:
     cell: CursorCell
     pose: FlowerPose
     asset: PoseAsset
+    samples: tuple[tuple[PoseAsset, float], ...] = ()
 
 
 class FlowerCursorRuntime:
@@ -40,12 +41,9 @@ class FlowerCursorRuntime:
         self.lifecycle.update(duration)
 
     def visuals(self) -> tuple[FlowerVisual, ...]:
-        return tuple(
-            FlowerVisual(
-                identifier=flower.identifier,
-                cell=flower.cell,
-                pose=flower.pose,
-                asset=self.pose_library.select(flower.pose),
-            )
-            for flower in self.lifecycle.flowers
-        )
+        visuals = []
+        for flower in self.lifecycle.flowers:
+            pose = flower.pose
+            samples = self.pose_library.sample(pose)
+            visuals.append(FlowerVisual(flower.identifier, flower.cell, pose, samples[0][0], samples))
+        return tuple(visuals)

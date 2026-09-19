@@ -10,8 +10,8 @@ _BLOOM_GROWTH_RESPONSE = 5.5
 _VITALITY_GROWTH_RESPONSE = 6.0
 _LEAF_GROWTH_RESPONSE = 8.0
 _STEM_WITHER_RESPONSE = 4.0
-_BLOOM_WITHER_RESPONSE = 18.0
-_VITALITY_WITHER_RESPONSE = 10.0
+_BLOOM_WITHER_RESPONSE = 8.0
+_VITALITY_WITHER_RESPONSE = 6.0
 _LEAF_WITHER_RESPONSE = 8.0
 
 
@@ -46,6 +46,11 @@ class FlowerPose:
     petal_open: float = 0.0
     head_lean: float = 0.0
     stem_bend: float = 0.0
+    maturity: float = 0.0
+
+    @property
+    def opacity(self) -> float:
+        return _smoothstep(self.vitality / 0.14)
 
 
 @dataclass(slots=True)
@@ -84,6 +89,7 @@ class FlowerInstance:
     _bloom: _Spring
     _vitality: _Spring
     _leaf: _Spring
+    _maturity: _Spring
     idle_phase: float = 0.0
 
     @classmethod
@@ -96,6 +102,7 @@ class FlowerInstance:
             _bloom=_Spring(0.0, response=_BLOOM_GROWTH_RESPONSE),
             _vitality=_Spring(1.0, response=_VITALITY_GROWTH_RESPONSE),
             _leaf=_Spring(0.0, response=_LEAF_GROWTH_RESPONSE),
+            _maturity=_Spring(0.0, response=8.0),
         )
 
     @property
@@ -104,10 +111,11 @@ class FlowerInstance:
         bloom = _clamp01(self._bloom.value)
         vitality = _clamp01(self._vitality.value)
         wither_amount = 1.0 - vitality
-        late_wither = _smoothstep((wither_amount - 0.62) / 0.38)
-        sway = math.sin(self.idle_phase) * 0.035 * vitality
+        late_wither = _smoothstep((wither_amount - 0.30) / 0.65)
+        sway = math.sin(self.idle_phase) * 0.065 * vitality
+        breathing = 0.012 * (1.0 - math.cos(self.idle_phase)) * bloom**4 * vitality
         head_lean = sway + 0.02 * wither_amount + 0.16 * late_wither
-        stem_bend = 0.05 * wither_amount + 0.62 * late_wither
+        stem_bend = 0.025 * wither_amount + 0.80 * late_wither
         return FlowerPose(
             stem=stem,
             bloom=bloom,
@@ -116,15 +124,14 @@ class FlowerInstance:
             idle_sway=sway,
             bud_size=_clamp01(0.18 + 0.78 * stem - 0.50 * bloom),
             leaf_unfurl=_clamp01(self._leaf.value),
-            petal_open=bloom,
+            petal_open=_clamp01(bloom - breathing),
             head_lean=head_lean,
             stem_bend=stem_bend,
+            maturity=_clamp01(self._maturity.value),
         )
 
     def begin_withering(self) -> None:
         self.active = False
-        self._stem.velocity = min(0.0, self._stem.velocity)
-        self._leaf.velocity = min(0.0, self._leaf.velocity)
         self._stem.response = _STEM_WITHER_RESPONSE
         self._bloom.response = _BLOOM_WITHER_RESPONSE
         self._vitality.response = _VITALITY_WITHER_RESPONSE
@@ -142,31 +149,25 @@ class FlowerInstance:
             raise ValueError("duration must be non-negative")
         if self.active:
             self._stem.step(1.0, duration)
-            self._bloom.step(1.0, duration)
+            bloom_target = _smoothstep((self._stem.value - 0.82) / 0.18)
+            self._bloom.step(bloom_target, duration)
             self._vitality.step(1.0, duration)
             leaf_target = _smoothstep((self._stem.value - 0.36) / 0.54)
+            self._maturity.step(max(self._maturity.value, self._bloom.value), duration)
         else:
             self._bloom.step(0.0, duration)
             self._vitality.step(0.0, duration)
-            self._stem.step(0.0, duration)
             wither_amount = 1.0 - _clamp01(self._vitality.value)
-            late_wither = _smoothstep((wither_amount - 0.62) / 0.38)
-            leaf_target = min(
-                self._leaf.value,
-                (1.0 - 0.52 * wither_amount) * (1.0 - late_wither),
-            )
+            collapse = _smoothstep((wither_amount - 0.90) / 0.10)
+            self._stem.step(self._stem.value * (1.0 - collapse), duration)
+            self._maturity.step(self._maturity.value, duration)
+            leaf_target = self._leaf.value * (1.0 - 0.25 * collapse)
         self._leaf.step(_clamp01(leaf_target), duration)
         self.idle_phase = (self.idle_phase + duration * 1.7) % math.tau
 
     @property
     def dead(self) -> bool:
-        maximum_state = max(
-            self._stem.value,
-            self._bloom.value,
-            self._vitality.value,
-            self._leaf.value,
-        )
-        return not self.active and maximum_state < 0.01
+        return not self.active and self._vitality.value < 0.004
 
 
 class FlowerLifecycle:

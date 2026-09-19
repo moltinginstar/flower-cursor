@@ -43,6 +43,7 @@ def run(
     on_cursor: Callable[[CursorCell], None] | None = None,
     on_tick: Callable[[float], None] | None = None,
     on_close: Callable[[], None] | None = None,
+    on_output: Callable[[bytes], None] | None = None,
     query_interval: float = 1 / 30,
     tick_interval: float = 1 / 60,
     hide_cursor: bool = False,
@@ -126,6 +127,8 @@ def run(
                     )
                     if data:
                         _write_all(stdout_fd, data)
+                        if on_output is not None:
+                            on_output(data)
                     child_output = child_output_tail + raw_data
                     child_queries_pending += child_output.count(_CPR_QUERY)
                     child_output_tail = child_output[-len(_CPR_QUERY) + 1 :]

@@ -103,12 +103,14 @@ def delete_placement(
     *,
     image_id: int = 1,
     placement_id: int = 1,
+    free_data: bool = False,
     write: Callable[[bytes], object] | None = None,
 ) -> bytes:
     """Delete one flower placement."""
     _validate_id("image_id", image_id)
     _validate_id("placement_id", placement_id)
-    command = _graphics_command(f"a=d,d=i,i={image_id},p={placement_id},q=2")
+    selector = "I" if free_data else "i"
+    command = _graphics_command(f"a=d,d={selector},i={image_id},p={placement_id},q=2")
     if write is not None:
         write(command)
     return command

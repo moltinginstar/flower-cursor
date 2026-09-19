@@ -5,14 +5,20 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
 import bpy
+from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
 ROOT = Path(__file__).resolve().parents[1]
-BLEND_PATH = ROOT / "blender" / "flower_cursor.blend"
+BLEND_PATH = Path(os.environ.get("FLOWER_BLEND_PATH", str(ROOT / "blender" / "flower_cursor.blend")))
+sys.path.insert(0, str(ROOT / "src"))
+
+from flower_cursor.lifecycle import CursorCell, FlowerInstance
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,18 +42,18 @@ STYLES = {
     "coral_anemone": FlowerStyle(
         name="coral_anemone",
         petal_colors=(
-            (0.91, 0.30, 0.35, 0.80),
-            (1.00, 0.52, 0.49, 0.74),
-            (0.80, 0.14, 0.21, 0.84),
+            (0.78, 0.12, 0.19, 0.94),
+            (0.95, 0.29, 0.27, 0.90),
+            (0.59, 0.055, 0.12, 0.96),
         ),
-        center_color=(0.96, 0.42, 0.07, 1.0),
+        center_color=(0.16, 0.055, 0.028, 1.0),
         filament_color=(1.00, 0.76, 0.18, 1.0),
         stem_color=(0.06, 0.26, 0.09, 1.0),
         leaf_color=(0.10, 0.42, 0.13, 0.94),
         petal_profile="round",
         leaf_profile="lance",
         petal_count=6,
-        petal_length=0.73,
+        petal_length=0.61,
         petal_width=0.42,
         leaf_length=0.76,
         leaf_width=0.34,
@@ -114,50 +120,61 @@ def channels(
         "stem_bend": droop,
         "idle_phase": idle_phase,
         "idle_lean": idle_lean,
+        "maturity": bloom,
     }
 
 
-POSES: dict[str, dict[str, float]] = {
-    "bud": channels(0.25, 0.05, 1.0, 0.0),
-    "bloom": channels(0.66, 0.55, 1.0, 0.0),
-    "mature": channels(1.0, 1.0, 1.0, 0.0),
-    "wilt": channels(0.25, 0.18, 0.35, 0.28),
-}
-for index in range(1, 24):
-    amount = 0.05 + 0.95 * index / 24
-    POSES[f"bloom_{index:02d}"] = channels(
-        0.25 + 0.75 * amount,
-        amount,
-        1.0,
-        0.0,
-    )
-for index in range(1, 13):
-    amount = index / 12
-    wither = channels(
-        1.0 - 0.75 * amount,
-        1.0 - 0.82 * amount,
-        1.0 - 0.65 * amount,
-        0.28 * amount,
-    )
-    late_wither = smoothstep((amount - 0.62) / 0.38)
-    wither["stem_length"] = max(0.08, 1.0 - 0.75 * late_wither)
-    wither["leaf_unfurl"] = max(0.0, 1.0 - 0.52 * amount)
-    wither["stem_bend"] = 0.05 * amount + 0.62 * late_wither
-    wither["head_lean"] = 0.02 * amount + 0.16 * late_wither
-    POSES[f"wilt_{index:02d}"] = wither
-for index in range(12):
-    phase = 2 * math.pi * index / 12
-    POSES[f"mature_idle_{index:02d}"] = channels(
-        1.0,
-        1.0,
-        1.0,
-        0.0,
-        idle_phase=phase,
-        idle_lean=0.10 * math.sin(phase),
-    )
+def sampled_channels(flower: FlowerInstance) -> dict[str, float]:
+    pose = flower.pose
+    result = channels(pose.stem, pose.bloom, pose.vitality, 1.0 - pose.vitality)
+    for name in ("bud_size", "leaf_unfurl", "petal_open", "head_lean", "stem_bend", "idle_phase", "maturity"):
+        result[name] = getattr(pose, name)
+    result["stem_length"] = pose.stem
+    return result
+
+
+POSES: dict[str, dict[str, float]] = {"mature": channels(1.0, 1.0, 1.0, 0.0)}
+flower = FlowerInstance.bud(1, CursorCell(0, 0))
+interruptions = {}
+for index in range(1, 37):
+    for _ in range(5):
+        flower.update(1 / 120)
+    POSES[f"bloom_{index:02d}"] = sampled_channels(flower)
+    if index in (6, 13, 22):
+        interruptions[f"partial_{index:02d}"] = deepcopy(flower)
+POSES["bud"] = POSES["bloom_01"]
+POSES["bloom"] = POSES["bloom_22"]
+flower.update(3.0)
+interruptions["wilt"] = flower
+revivals = {}
+for prefix, departure in interruptions.items():
+    departure.begin_withering()
+    for index in range(1, 81):
+        for _ in range(2):
+            departure.update(1 / 120)
+        suffix = f"{index // 2:02d}" + ("_half" if index % 2 else "")
+        POSES[f"{prefix}_{suffix}"] = sampled_channels(departure)
+        if index == 28:
+            revivals[prefix] = deepcopy(departure)
+POSES["wilt"] = POSES["wilt_40"]
+for prefix, returning in revivals.items():
+    returning.restore()
+    for index in range(1, 73):
+        for _ in range(2):
+            returning.update(1 / 120)
+        suffix = f"{index // 2:02d}" + ("_half" if index % 2 else "")
+        POSES[f"revive_{prefix}_{suffix}"] = sampled_channels(returning)
+for index in range(24):
+    phase = 2 * math.pi * index / 24
+    idle = channels(1.0, 1.0, 1.0, 0.0, idle_phase=phase, idle_lean=0.065 * math.sin(phase))
+    idle["petal_open"] = 1.0 - 0.012 * (1.0 - math.cos(phase))
+    idle["leaf_unfurl"] = 0.98 + 0.02 * math.cos(phase + 0.4)
+    POSES[f"mature_idle_{index:02d}"] = idle
 
 
 def write_manifest() -> None:
+    scene = bpy.context.scene
+    root = world_to_camera_view(scene, scene.camera, Vector((0.0, 0.0, 0.0)))
     entries = []
     for name, pose in POSES.items():
         entries.append(
@@ -172,6 +189,7 @@ def write_manifest() -> None:
                 "petal_open": pose["petal_open"],
                 "head_lean": pose["head_lean"],
                 "stem_bend": pose["stem_bend"],
+                "maturity": pose["maturity"],
                 "file": f"flower_{name}.png",
                 **({"idle_phase": pose["idle_phase"]} if "idle_phase" in pose else {}),
             }
@@ -181,6 +199,7 @@ def write_manifest() -> None:
         json.dumps(
             {
                 "style": STYLE.name,
+                "root_anchor": [root.x, 1.0 - root.y],
                 "poses": entries,
             },
             indent=2,
@@ -230,9 +249,9 @@ def material(
     if "Subsurface Radius" in principled.inputs:
         principled.inputs["Subsurface Radius"].default_value = (1.0, 0.35, 0.25)
     if "Coat Weight" in principled.inputs:
-        principled.inputs["Coat Weight"].default_value = 0.28
+        principled.inputs["Coat Weight"].default_value = 0.07
     if "Coat Roughness" in principled.inputs:
-        principled.inputs["Coat Roughness"].default_value = 0.16
+        principled.inputs["Coat Roughness"].default_value = 0.32
     if hasattr(mat, "surface_render_method"):
         mat.surface_render_method = "DITHERED"
     elif hasattr(mat, "blend_method"):
@@ -267,6 +286,15 @@ def add_cylinder_between(
     return obj
 
 
+def stem_point(t: float, stem_length: float, bend: float, head_lean: float) -> Vector:
+    natural_curve = -0.14 * math.sin(math.pi * t) * smoothstep(t / 0.45) + 0.14 * t**3
+    return Vector((
+        stem_length * (natural_curve + head_lean * t**1.45 + bend * 1.15 * t**2.25),
+        0.025 * math.sin(t * math.pi * 1.4),
+        2.16 * stem_length * t * (1.0 - 0.55 * bend * t**3),
+    ))
+
+
 def add_stem(
     mat: bpy.types.Material,
     stem_length: float,
@@ -276,15 +304,7 @@ def add_stem(
     points = []
     for index in range(8):
         t = index / 7
-        points.append(
-            Vector(
-                (
-                    -0.035 * math.sin(t * math.pi) + head_lean * t**1.45 + bend * 0.65 * t**2.25,
-                    0.025 * math.sin(t * math.pi * 1.4),
-                    2.16 * stem_length * t,
-                )
-            )
-        )
+        points.append(stem_point(t, stem_length, bend, head_lean))
     curve_data = bpy.data.curves.new("Living stem curve", type="CURVE")
     curve_data.dimensions = "3D"
     curve_data.resolution_u = 16
@@ -296,7 +316,8 @@ def add_stem(
         point.co = coordinate
         point.handle_left_type = "AUTO"
         point.handle_right_type = "AUTO"
-        point.radius = 1.0 - 0.18 * index / (len(points) - 1)
+        t = index / (len(points) - 1)
+        point.radius = 1.0 - 0.38 * t + 0.045 * math.sin(math.tau * t)
     obj = bpy.data.objects.new("Living stem", curve_data)
     bpy.context.collection.objects.link(obj)
     curve_data.materials.append(mat)
@@ -365,6 +386,7 @@ def add_bud(
     center: Vector,
     bud_size: float,
     petal_open: float,
+    vitality: float,
 ) -> None:
     if petal_open < 0.55:
         bpy.ops.mesh.primitive_uv_sphere_add(
@@ -375,7 +397,8 @@ def add_bud(
         )
         bud = bpy.context.object
         bud.name = "Bud_Core"
-        bud.scale = (0.15 + 0.07 * bud_size, 0.12 + 0.05 * bud_size, 0.18 + 0.11 * bud_size)
+        enclosure = smoothstep((0.55 - petal_open) / 0.55) * vitality**2
+        bud.scale = (0.12 * enclosure, 0.12 * enclosure, 0.18 * enclosure)
         bud.data.materials.append(mat)
         for polygon in bud.data.polygons:
             polygon.use_smooth = True
@@ -403,36 +426,57 @@ def add_petal_ring(
     droop: float,
     head_lean: float,
     flower_height: float,
+    maturity: float,
 ) -> None:
     center = Vector((0.03 + head_lean, -0.045, flower_height))
     opening = clamp01(bloom)
-    spread = 0.05 + 0.95 * opening
-    petal_scale = 0.45 + 0.55 * opening
-    head_pitch = 0.36 + 0.08 * opening
+    axis = Vector((0.20, -0.83, 0.52 - droop * 1.4)).normalized()
+    horizontal = Vector((1.0, 0.0, 0.0))
+    horizontal = (horizontal - axis * horizontal.dot(axis)).normalized()
+    vertical = axis.cross(horizontal).normalized()
     for index in range(STYLE.petal_count):
-        base_angle = 2 * math.pi * index / STYLE.petal_count + 0.42
-        angle = base_angle * spread + 0.055 * math.sin(index * 2.7)
-        radial = Vector((math.sin(angle), 0.0, math.cos(angle)))
-        petal_variation = 0.88 + 0.16 * (0.5 + 0.5 * math.sin(index * 1.9))
-        obj = shaped_mesh(
-            f"Petal_{index:02d}",
-            petal_mats[index % len(petal_mats)],
-            shape=STYLE.petal_profile,
-            length=STYLE.petal_length * petal_scale * petal_variation,
-            width=STYLE.petal_width * petal_scale * (0.94 + 0.08 * math.cos(index * 1.4)),
-            curl=(0.07 + 0.13 * opening) + 0.16 * droop,
-            ridge=0.052 + 0.025 * opening,
-        )
-        petal_depth = 0.055 * math.sin(base_angle + 0.35)
-        obj.location = center + radial * (0.03 + 0.09 * opening) + Vector((0.0, petal_depth, 0.0))
-        obj.rotation_euler[1] = angle
-        obj.rotation_euler[0] = head_pitch + droop * 0.65 * math.sin(base_angle)
-        obj.rotation_euler[2] = 0.05 * math.sin(base_angle * 2.0)
-        obj.scale = (
-            0.96 + 0.07 * math.sin(index * 1.7),
-            1.0,
-            0.96 + 0.08 * math.cos(index * 1.3),
-        )
+        angle = 2 * math.pi * index / STYLE.petal_count + 0.42
+        radial = horizontal * math.cos(angle) + vertical * math.sin(angle)
+        tangent = axis.cross(radial)
+        unfurl = smoothstep(clamp01(opening * 1.14 - 0.10 * (0.5 + 0.5 * math.sin(index * 2.3))))
+        tissue = smoothstep(maturity / 0.08)
+        length = STYLE.petal_length * (0.52 + 0.48 * maturity) * (0.65 + 0.35 * tissue)
+        length *= 0.94 + 0.06 * math.sin(index * 1.9)
+        verts = []
+        rows, columns = 25, 13
+        for row in range(rows):
+            t = row / (rows - 1)
+            width = STYLE.petal_width * math.sin(math.pi * t) ** 0.65
+            width *= (0.35 + 0.65 * maturity) * (0.72 + 0.28 * t)
+            width *= (1.0 - 0.20 * droop * t) * (0.35 + 0.65 * unfurl)
+            distance = 0.045 + length * t * (0.12 + 0.88 * unfurl)
+            distance += 0.13 * tissue * (1.0 - unfurl) * math.sin(math.pi * t)
+            cup = length * t * (0.92 - 0.76 * unfurl)
+            cup += 0.20 * unfurl * t**3
+            for column in range(columns):
+                across = 2 * column / (columns - 1) - 1
+                pleat = 0.012 * math.cos(across * math.pi * 4 + t * 1.8) * math.sin(math.pi * t)
+                edge = (0.09 + 0.10 * (1.0 - unfurl)) * across**2 * math.sin(math.pi * t)
+                ripple = 0.025 * math.sin(across * 8 + index * 1.7) * t**4
+                point = center + radial * distance + tangent * (across * width)
+                point += axis * (cup + edge + pleat * (1.0 + droop) + ripple)
+                point.z -= droop * (0.12 + 0.045 * math.sin(index * 2.1)) * t**2
+                verts.append(tuple(point))
+        faces = []
+        for row in range(rows - 1):
+            for column in range(columns - 1):
+                a = row * columns + column
+                faces.append((a, a + 1, a + columns + 1, a + columns))
+        mesh = bpy.data.meshes.new(f"Petal_{index:02d}")
+        mesh.from_pydata(verts, [], faces)
+        mesh.update()
+        obj = bpy.data.objects.new(mesh.name, mesh)
+        bpy.context.collection.objects.link(obj)
+        mesh.materials.append(petal_mats[index % len(petal_mats)])
+        for polygon in mesh.polygons:
+            polygon.use_smooth = True
+        solidify = obj.modifiers.new("Thin petal tissue", "SOLIDIFY")
+        solidify.thickness = 0.006
 
 
 def add_leaf(
@@ -443,6 +487,7 @@ def add_leaf(
     head_lean: float,
     stem_length: float,
     index: int,
+    stem_bend: float,
 ) -> None:
     growth = clamp01(growth)
     if growth <= 0.01:
@@ -456,14 +501,9 @@ def add_leaf(
         curl=0.12 + 0.12 * droop,
         ridge=0.034,
     )
-    leaf.location = Vector(
-        (
-            side * (0.035 + 0.07 * growth) + head_lean * 0.42,
-            -0.01,
-            2.16 * stem_length * (0.53 + 0.10 * index),
-        )
-    )
-    leaf.rotation_euler[1] = side * math.radians(68.0 - 22.0 * growth)
+    t = 0.53 + 0.10 * index
+    leaf.location = stem_point(t, stem_length, stem_bend, head_lean)
+    leaf.rotation_euler[1] = side * math.radians(68.0 - 22.0 * growth + 95.0 * droop)
     leaf.rotation_euler[0] = math.radians(7.0) + droop * side * 0.65
     leaf.rotation_euler[2] = side * 0.08 * (1.0 - growth)
     leaf.scale = (growth, growth, growth)
@@ -475,9 +515,15 @@ def add_center(
     petal_open: float,
     head_lean: float,
     flower_height: float,
+    droop: float,
+    maturity: float,
 ) -> None:
-    center = Vector((0.03 + head_lean, -0.18, flower_height + 0.01))
-    radius = 0.15 * (0.84 + 0.16 * petal_open)
+    axis = Vector((0.20, -0.83, 0.52 - droop * 1.4)).normalized()
+    horizontal = Vector((1.0, 0.0, 0.0))
+    horizontal = (horizontal - axis * horizontal.dot(axis)).normalized()
+    vertical = axis.cross(horizontal).normalized()
+    center = Vector((0.03 + head_lean, -0.045, flower_height)) + axis * 0.085
+    radius = 0.11 * (0.35 + 0.65 * maturity)
     bpy.ops.mesh.primitive_ico_sphere_add(
         subdivisions=3,
         radius=radius,
@@ -485,19 +531,22 @@ def add_center(
     )
     obj = bpy.context.object
     obj.name = "Flower_Center"
-    obj.scale = (1.0, 0.62, 0.78)
+    obj.scale = (1.0, 1.0, 0.55)
+    obj.rotation_mode = "QUATERNION"
+    obj.rotation_quaternion = axis.to_track_quat("Z", "Y")
     obj.data.materials.append(center_mat)
     for polygon in obj.data.polygons:
         polygon.use_smooth = True
 
-    if petal_open < 0.28:
+    if maturity < 0.001:
         return
-    filament_amount = smoothstep((petal_open - 0.28) / 0.72)
-    for index in range(10):
-        angle = 2 * math.pi * index / 10 + 0.2
-        direction = Vector((math.sin(angle), -0.02, math.cos(angle)))
-        start = center + direction * radius * 0.45
-        end = center + direction * radius * (0.90 + 0.22 * filament_amount)
+    filament_amount = smoothstep(maturity)
+    for index in range(24):
+        angle = 2 * math.pi * index / 24 + 0.2
+        direction = horizontal * math.cos(angle) + vertical * math.sin(angle)
+        start = center + direction * radius * 0.7
+        end = center + direction * radius * (1.15 + 0.45 * filament_amount)
+        end += axis * (0.025 + 0.022 * math.sin(index * 2.4))
         add_cylinder_between(
             f"Filament_{index:02d}",
             start,
@@ -508,7 +557,7 @@ def add_center(
         )
         bpy.ops.mesh.primitive_ico_sphere_add(
             subdivisions=2,
-            radius=0.026,
+            radius=0.017,
             location=end,
         )
         pollen = bpy.context.object
@@ -583,13 +632,13 @@ def main(pose_name: str) -> None:
     vitality = pose["vitality"]
     droop = pose["droop"]
     head_lean = pose["head_lean"]
-    flower_height = 2.16 * stem_length
+    flower_height = 2.16 * stem_length * (1.0 - 0.55 * pose["stem_bend"])
 
     petal_mats = tuple(
         material(
             f"{STYLE.name} petal {index}",
-            color,
-            0.22 + 0.10 * (1.0 - vitality),
+            tuple(color[channel] * (0.4 + 0.6 * vitality) + (0.24, 0.10, 0.075)[channel] * 0.6 * (1.0 - vitality) for channel in range(3)) + (color[3],),
+            0.40 + 0.16 * (1.0 - vitality),
             transmission=0.16,
             subsurface=0.075,
         )
@@ -602,17 +651,28 @@ def main(pose_name: str) -> None:
     sepal_mat = material("Sepal green", STYLE.leaf_color, 0.38, subsurface=0.04)
 
     add_stem(stem_mat, stem_length, pose["stem_bend"], head_lean)
-    add_leaf(leaf_mat, -1.0, pose["leaf_unfurl"] * 1.05, droop, head_lean, stem_length, 0)
-    add_leaf(leaf_mat, 1.0, (pose["leaf_unfurl"] - 0.12) / 0.88, droop, head_lean, stem_length, 1)
-    add_petal_ring(petal_mats, petal_open, droop, head_lean, flower_height)
+    add_leaf(leaf_mat, -1.0, pose["leaf_unfurl"] * 1.05, droop, head_lean, stem_length, 0, pose["stem_bend"])
+    add_leaf(leaf_mat, 1.0, (pose["leaf_unfurl"] - 0.12) / 0.88, droop, head_lean, stem_length, 1, pose["stem_bend"])
+    head_offset = stem_point(1.0, stem_length, pose["stem_bend"], head_lean).x - 0.03
+    add_petal_ring(petal_mats, petal_open, droop, head_offset, flower_height, pose["maturity"])
     add_bud(
         petal_mats[0],
         sepal_mat,
-        Vector((0.03 + head_lean, -0.03, flower_height)),
+        Vector((0.03 + head_offset, -0.03, flower_height)),
         pose["bud_size"],
         petal_open,
+        vitality,
     )
-    add_center(center_mat, filament_mat, petal_open, head_lean, flower_height)
+    add_center(center_mat, filament_mat, petal_open, head_offset, flower_height, droop, pose["maturity"])
+    bpy.context.view_layer.update()
+    head_origin = Vector((0.03 + head_offset, -0.03, flower_height))
+    head_scale = 0.28 + 0.72 * smoothstep(stem_length)
+    for obj in bpy.context.scene.objects:
+        if obj.type == "MESH" and obj.name.startswith(("Petal_", "Sepal_", "Bud_", "Flower_Center", "Filament_", "Pollen_")):
+            inverse = obj.matrix_world.inverted()
+            for vertex in obj.data.vertices:
+                world = obj.matrix_world @ vertex.co
+                vertex.co = inverse @ (head_origin + (world - head_origin) * head_scale)
     add_camera()
     add_lights()
     scene = configure_render(render_path)
@@ -634,4 +694,8 @@ def main(pose_name: str) -> None:
     )
 
 
-main(globals().get("FLOWER_POSE", os.environ.get("FLOWER_POSE", "mature")))
+requested = os.environ.get("FLOWER_POSES", "")
+for pose_name in (list(POSES) if requested == "all" else requested.split(",")) if requested else [
+    globals().get("FLOWER_POSE", os.environ.get("FLOWER_POSE", "mature"))
+]:
+    main(pose_name)

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import os
+import struct
 import sys
+import termios
 import time
 from pathlib import Path
 
@@ -68,7 +71,11 @@ def main(argv: list[str] | None = None) -> int:
     def on_tick(duration: float) -> None:
         if runtime is not None and renderer is not None and current_cell is not None:
             runtime.update(duration)
-            renderer.render(runtime.visuals(), current_cell)
+            rows, columns, width, height = struct.unpack(
+                "HHHH", fcntl.ioctl(output.fileno(), termios.TIOCGWINSZ, b"\0" * 8)
+            )
+            cell_size = (width // columns, height // rows) if rows and columns and width and height else None
+            renderer.render(runtime.visuals(), current_cell, duration, cell_size)
             output.flush()
 
     def close_graphics() -> None:
@@ -82,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
             on_cursor=on_cursor if log_file is not None or runtime is not None else None,
             on_tick=on_tick if runtime is not None else None,
             on_close=close_graphics if renderer is not None else None,
+            on_output=renderer.observe_terminal_output if renderer is not None else None,
             query_interval=args.interval,
             tick_interval=args.render_interval,
             hide_cursor=renderer is not None,

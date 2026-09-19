@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "A living flower cursor for Kitty"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pillow>=11.3",
+]
 
 [dependency-groups]
 dev = [
