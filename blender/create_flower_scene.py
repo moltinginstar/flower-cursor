@@ -14,11 +14,14 @@ import bpy
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
 
-ROOT = Path(__file__).resolve().parents[1]
-BLEND_PATH = Path(os.environ.get("FLOWER_BLEND_PATH", str(ROOT / "blender" / "flower_cursor.blend")))
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from flower_cursor.lifecycle import CursorCell, FlowerInstance
+
+ROOT = Path(__file__).resolve().parents[1]
+BLEND_PATH = Path(
+    os.environ.get("FLOWER_BLEND_PATH", str(ROOT / "blender" / "flower_cursor.blend"))
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,7 +133,18 @@ def channels(
 def sampled_channels(flower: FlowerInstance) -> dict[str, float]:
     pose = flower.pose
     result = channels(pose.stem, pose.bloom, pose.vitality, 1.0 - pose.vitality)
-    for name in ("bud_size", "leaf_unfurl", "petal_open", "head_lean", "stem_bend", "idle_phase", "maturity", "collapse", "petal_curl", "retraction"):
+    for name in (
+        "bud_size",
+        "leaf_unfurl",
+        "petal_open",
+        "head_lean",
+        "stem_bend",
+        "idle_phase",
+        "maturity",
+        "collapse",
+        "petal_curl",
+        "retraction",
+    ):
         result[name] = getattr(pose, name)
     result["stem_length"] = pose.stem
     return result
@@ -298,20 +312,25 @@ def stem_point(
     t: float, stem_length: float, bend: float, head_lean: float, collapse: float = 0.0
 ) -> Vector:
     natural_curve = -0.14 * math.sin(math.pi * t) * smoothstep(t / 0.45) + 0.14 * t**3
-    standing = Vector((
-        stem_length * (natural_curve + head_lean * t**1.45 + 0.5 * bend * 1.15 * t**2.25),
-        0.025 * math.sin(t * math.pi * 1.4) - math.sqrt(3.0) / 2.0 * stem_length * bend * 1.15 * t**2.25,
-        2.16 * stem_length * t * (1.0 - 0.55 * bend * t**3),
-    ))
+    standing = Vector(
+        (
+            stem_length * (natural_curve + head_lean * t**1.45 + 0.5 * bend * 1.15 * t**2.25),
+            0.025 * math.sin(t * math.pi * 1.4)
+            - math.sqrt(3.0) / 2.0 * stem_length * bend * 1.15 * t**2.25,
+            2.16 * stem_length * t * (1.0 - 0.55 * bend * t**3),
+        )
+    )
     if collapse <= 0.0:
         return standing
     onset = 0.30 * (1.0 - t)
     fold = smoothstep((collapse - onset) / (1.0 - onset))
-    folded = stem_length * Vector((
-        0.075 * math.sin(math.tau * t),
-        0.02 * math.sin(math.pi * t),
-        0.18 * t + 0.04 * math.sin(math.pi * t),
-    ))
+    folded = stem_length * Vector(
+        (
+            0.075 * math.sin(math.tau * t),
+            0.02 * math.sin(math.pi * t),
+            0.18 * t + 0.04 * math.sin(math.pi * t),
+        )
+    )
     return standing.lerp(folded, fold)
 
 
@@ -486,11 +505,21 @@ def add_petal_ring(
                 pleat = 0.012 * math.cos(across * math.pi * 4 + t * 1.8) * math.sin(math.pi * t)
                 edge = (0.09 + 0.10 * (1.0 - unfurl)) * across**2 * math.sin(math.pi * t)
                 ripple = 0.025 * math.sin(across * 8 + index * 1.7) * t**4
-                folded_across = math.sin(across * edge_angle) / edge_angle if edge_angle > 1e-8 else across
-                edge_roll = width * (1.0 - math.cos(across * edge_angle)) / edge_angle if edge_angle > 1e-8 else 0.0
+                folded_across = (
+                    math.sin(across * edge_angle) / edge_angle if edge_angle > 1e-8 else across
+                )
+                edge_roll = (
+                    width * (1.0 - math.cos(across * edge_angle)) / edge_angle
+                    if edge_angle > 1e-8
+                    else 0.0
+                )
                 point = center + radial * distance + tangent * (folded_across * width)
-                point += axis * (cup + edge + edge_roll + pleat * (1.0 + droop + 1.5 * curl) + ripple)
-                point.z -= droop * (0.12 + 0.045 * math.sin(index * 2.1)) * t**2 * (1.0 - 0.7 * curl)
+                point += axis * (
+                    cup + edge + edge_roll + pleat * (1.0 + droop + 1.5 * curl) + ripple
+                )
+                point.z -= (
+                    droop * (0.12 + 0.045 * math.sin(index * 2.1)) * t**2 * (1.0 - 0.7 * curl)
+                )
                 verts.append(tuple(point))
         faces = []
         for row in range(rows - 1):
@@ -558,7 +587,9 @@ def add_center(
     horizontal = (horizontal - axis * horizontal.dot(axis)).normalized()
     vertical = axis.cross(horizontal).normalized()
     spent = smoothstep((droop - 0.18) / 0.72)
-    center = Vector((0.03 + head_lean, -0.045, flower_height)) + axis * (0.085 * (1.0 - 0.45 * spent))
+    center = Vector((0.03 + head_lean, -0.045, flower_height)) + axis * (
+        0.085 * (1.0 - 0.45 * spent)
+    )
     radius = 0.11 * (0.35 + 0.65 * maturity) * (1.0 - 0.30 * spent)
     bpy.ops.mesh.primitive_ico_sphere_add(
         subdivisions=3,
@@ -676,7 +707,12 @@ def main(pose_name: str) -> None:
     petal_mats = tuple(
         material(
             f"{STYLE.name} petal {index}",
-            tuple(color[channel] * (0.4 + 0.6 * vitality) + (0.24, 0.10, 0.075)[channel] * 0.6 * (1.0 - vitality) for channel in range(3)) + (color[3],),
+            tuple(
+                color[channel] * (0.4 + 0.6 * vitality)
+                + (0.24, 0.10, 0.075)[channel] * 0.6 * (1.0 - vitality)
+                for channel in range(3)
+            )
+            + (color[3],),
             0.40 + 0.16 * (1.0 - vitality),
             transmission=0.16,
             subsurface=0.075,
@@ -690,10 +726,41 @@ def main(pose_name: str) -> None:
     sepal_mat = material("Sepal green", STYLE.leaf_color, 0.38, subsurface=0.04)
 
     add_stem(stem_mat, stem_length, pose["stem_bend"], head_lean, collapse)
-    add_leaf(leaf_mat, -1.0, pose["leaf_unfurl"] * 1.05, droop, head_lean, stem_length, 0, pose["stem_bend"], collapse, petal_curl)
-    add_leaf(leaf_mat, 1.0, (pose["leaf_unfurl"] - 0.12) / 0.88, droop, head_lean, stem_length, 1, pose["stem_bend"], collapse, petal_curl)
+    add_leaf(
+        leaf_mat,
+        -1.0,
+        pose["leaf_unfurl"] * 1.05,
+        droop,
+        head_lean,
+        stem_length,
+        0,
+        pose["stem_bend"],
+        collapse,
+        petal_curl,
+    )
+    add_leaf(
+        leaf_mat,
+        1.0,
+        (pose["leaf_unfurl"] - 0.12) / 0.88,
+        droop,
+        head_lean,
+        stem_length,
+        1,
+        pose["stem_bend"],
+        collapse,
+        petal_curl,
+    )
     head_offset = tip.x - 0.03
-    add_petal_ring(petal_mats, petal_open, droop, head_offset, flower_height, pose["maturity"], petal_curl, collapse)
+    add_petal_ring(
+        petal_mats,
+        petal_open,
+        droop,
+        head_offset,
+        flower_height,
+        pose["maturity"],
+        petal_curl,
+        collapse,
+    )
     add_bud(
         petal_mats[0],
         sepal_mat,
@@ -702,17 +769,30 @@ def main(pose_name: str) -> None:
         petal_open,
         vitality,
     )
-    add_center(center_mat, filament_mat, petal_open, head_offset, flower_height, droop, pose["maturity"], collapse)
+    add_center(
+        center_mat,
+        filament_mat,
+        petal_open,
+        head_offset,
+        flower_height,
+        droop,
+        pose["maturity"],
+        collapse,
+    )
     bpy.context.view_layer.update()
     head_origin = Vector((0.03 + head_offset, -0.03, flower_height))
     head_scale = 0.28 + 0.72 * smoothstep(stem_length)
     head_depth = Vector((0.0, tip.y - 0.025 * math.sin(math.pi * 1.4), 0.0))
     for obj in bpy.context.scene.objects:
-        if obj.type == "MESH" and obj.name.startswith(("Petal_", "Sepal_", "Bud_", "Flower_Center", "Filament_", "Pollen_")):
+        if obj.type == "MESH" and obj.name.startswith(
+            ("Petal_", "Sepal_", "Bud_", "Flower_Center", "Filament_", "Pollen_")
+        ):
             inverse = obj.matrix_world.inverted()
             for vertex in obj.data.vertices:
                 world = obj.matrix_world @ vertex.co
-                vertex.co = inverse @ (head_origin + (world - head_origin) * head_scale + head_depth)
+                vertex.co = inverse @ (
+                    head_origin + (world - head_origin) * head_scale + head_depth
+                )
     if pose["retraction"] > 0.0:
         remaining = 1.0 - pose["retraction"]
         for obj in bpy.context.scene.objects:
@@ -741,7 +821,9 @@ def main(pose_name: str) -> None:
 
 
 requested = os.environ.get("FLOWER_POSES", "")
-for pose_name in (list(POSES) if requested == "all" else requested.split(",")) if requested else [
-    globals().get("FLOWER_POSE", os.environ.get("FLOWER_POSE", "mature"))
-]:
+for pose_name in (
+    (list(POSES) if requested == "all" else requested.split(","))
+    if requested
+    else [globals().get("FLOWER_POSE", os.environ.get("FLOWER_POSE", "mature"))]
+):
     main(pose_name)

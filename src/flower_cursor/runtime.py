@@ -45,5 +45,7 @@ class FlowerCursorRuntime:
         for flower in self.lifecycle.flowers:
             pose = flower.pose
             samples = self.pose_library.sample(pose)
-            visuals.append(FlowerVisual(flower.identifier, flower.cell, pose, samples[0][0], samples))
+            visuals.append(
+                FlowerVisual(flower.identifier, flower.cell, pose, samples[0][0], samples)
+            )
         return tuple(visuals)

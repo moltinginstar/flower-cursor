@@ -83,7 +83,9 @@ class PoseLibrary:
         if neighbors[0][0] < 1e-10 or len(neighbors) == 1:
             return ((neighbors[0][1], 1.0),)
         radius = neighbors[-1][0] * 1.001 + 1e-10
-        weighted = [(asset, max(0.0, 1.0 - distance / radius) ** 2) for distance, asset in neighbors]
+        weighted = [
+            (asset, max(0.0, 1.0 - distance / radius) ** 2) for distance, asset in neighbors
+        ]
         total = sum(weight for _, weight in weighted)
         return tuple((asset, weight / total) for asset, weight in weighted if weight > 1e-8)
 

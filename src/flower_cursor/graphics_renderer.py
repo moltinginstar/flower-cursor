@@ -73,7 +73,11 @@ class FlowerRenderer:
         visible_ids = {visual.identifier for visual in visuals}
         for visual in visuals:
             frame = self._compositor.frame(visual, duration)
-            frame = frame.convert("RGBa").resize((width, height), Image.Resampling.LANCZOS).convert("RGBA")
+            frame = (
+                frame.convert("RGBa")
+                .resize((width, height), Image.Resampling.LANCZOS)
+                .convert("RGBA")
+            )
             left = (visual.cell.column - self._anchor_columns) * cell_width + horizontal_offset
             column, x_offset = divmod(max(0, left), cell_width)
             if left < 0:
@@ -81,10 +85,16 @@ class FlowerRenderer:
             target = CursorCell(max(0, visual.cell.row - self._anchor_rows), column)
             pixels = frame.tobytes()
             previous = self._placements.get(visual.identifier)
-            if not geometry_changed and previous is not None and previous[:2] == (visual.cell, pixels):
+            if (
+                not geometry_changed
+                and previous is not None
+                and previous[:2] == (visual.cell, pixels)
+            ):
                 continue
             image_base = 0x10000000 + visual.identifier * 2
-            image_id = image_base if previous is None or previous[2] != image_base else image_base + 1
+            image_id = (
+                image_base if previous is None or previous[2] != image_base else image_base + 1
+            )
             buffer = io.BytesIO()
             frame.save(buffer, format="PNG", compress_level=1)
             self._write(b"\x1b[s")
@@ -100,16 +110,20 @@ class FlowerRenderer:
             )
             if previous is not None:
                 delete_placement(
-                    image_id=previous[2], placement_id=visual.identifier,
-                    free_data=True, write=self._write,
+                    image_id=previous[2],
+                    placement_id=visual.identifier,
+                    free_data=True,
+                    write=self._write,
                 )
             self._write(b"\x1b[u")
             self._placements[visual.identifier] = (visual.cell, pixels, image_id)
 
         for identifier in set(self._placements) - visible_ids:
             delete_placement(
-                image_id=self._placements[identifier][2], placement_id=identifier,
-                free_data=True, write=self._write,
+                image_id=self._placements[identifier][2],
+                placement_id=identifier,
+                free_data=True,
+                write=self._write,
             )
             del self._placements[identifier]
         self._compositor.retain(visible_ids)
@@ -117,7 +131,10 @@ class FlowerRenderer:
     def clear(self) -> None:
         for identifier, (_, _, image_id) in tuple(self._placements.items()):
             delete_placement(
-                image_id=image_id, placement_id=identifier, free_data=True, write=self._write,
+                image_id=image_id,
+                placement_id=identifier,
+                free_data=True,
+                write=self._write,
             )
         self._placements.clear()
         self._compositor.retain(set())

@@ -74,7 +74,11 @@ def main(argv: list[str] | None = None) -> int:
             rows, columns, width, height = struct.unpack(
                 "HHHH", fcntl.ioctl(output.fileno(), termios.TIOCGWINSZ, b"\0" * 8)
             )
-            cell_size = (width // columns, height // rows) if rows and columns and width and height else None
+            cell_size = (
+                (width // columns, height // rows)
+                if rows and columns and width and height
+                else None
+            )
             renderer.render(runtime.visuals(), current_cell, duration, cell_size)
             output.flush()
 
