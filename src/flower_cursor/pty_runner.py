@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import pty
 import selectors
@@ -42,7 +43,8 @@ def run(
     on_cursor: Callable[[CursorCell], None] | None = None,
     on_tick: Callable[[float], None] | None = None,
     on_close: Callable[[], None] | None = None,
-    query_interval: float = 1 / 60,
+    query_interval: float = 1 / 30,
+    tick_interval: float = 1 / 60,
     hide_cursor: bool = False,
 ) -> int:
     """Run *command* behind a PTY and report Kitty cursor cells to a callback."""
@@ -50,6 +52,8 @@ def run(
         raise ValueError("command must not be empty")
     if query_interval <= 0:
         raise ValueError("query_interval must be positive")
+    if tick_interval <= 0:
+        raise ValueError("tick_interval must be positive")
     stdin_fd = sys.stdin.fileno()
     stdout_fd = sys.stdout.fileno()
     if not os.isatty(stdin_fd) or not os.isatty(stdout_fd):
@@ -66,8 +70,10 @@ def run(
     child_output_tail = b""
     cursor_visibility = CursorVisibilityFilter() if hide_cursor else None
     resize_pending = True
-    next_query = 0.0
-    last_tick = time.monotonic()
+    now = time.monotonic()
+    next_query = now
+    next_tick = now
+    last_tick = now
     resize_handler = signal.getsignal(signal.SIGWINCH)
 
     def request_resize(_signum: int, _frame: object) -> None:
@@ -84,7 +90,10 @@ def run(
         selector.register(master_fd, selectors.EVENT_READ, "master")
         while True:
             now = time.monotonic()
-            timeout = max(0.0, next_query - now) if next_query else 0.0
+            deadlines = [next_query]
+            if on_tick is not None:
+                deadlines.append(next_tick)
+            timeout = max(0.0, min(deadlines) - now)
             events = selector.select(timeout)
             for key, _mask in events:
                 if key.data == "stdin":
@@ -125,9 +134,11 @@ def run(
                 _sync_window_size(master_fd, stdin_fd)
                 resize_pending = False
             now = time.monotonic()
-            if on_tick is not None:
+            if on_tick is not None and now >= next_tick:
                 on_tick(now - last_tick)
-            last_tick = now
+                last_tick = now
+                missed_ticks = max(1, math.ceil((now - next_tick) / tick_interval))
+                next_tick += missed_ticks * tick_interval
             if now >= next_query:
                 _write_all(stdout_fd, _CPR_QUERY)
                 next_query = now + query_interval

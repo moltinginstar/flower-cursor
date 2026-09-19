@@ -25,8 +25,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--interval",
         type=float,
-        default=1 / 60,
+        default=1 / 30,
         help="seconds between Kitty cursor-position queries",
+    )
+    parser.add_argument(
+        "--render-interval",
+        type=float,
+        default=1 / 60,
+        help="seconds between independent animation/render ticks",
     )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
@@ -77,6 +83,7 @@ def main(argv: list[str] | None = None) -> int:
             on_tick=on_tick if runtime is not None else None,
             on_close=close_graphics if renderer is not None else None,
             query_interval=args.interval,
+            tick_interval=args.render_interval,
             hide_cursor=renderer is not None,
         )
     finally:

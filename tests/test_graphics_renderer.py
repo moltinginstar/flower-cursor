@@ -19,7 +19,7 @@ def test_renderer_places_once_until_the_authored_pose_changes() -> None:
     renderer.render(runtime.visuals(), A)
 
     assert b"\x1b[s\x1b[1A\x1b[3D" in first_output
-    assert b"a=T,f=100,i=1001,p=1,c=5,r=2,X=8,Y=2,C=1,z=1" in first_output
+    assert b"a=T,f=100,i=1000,p=1,c=5,r=2,X=8,Y=2,C=1,z=1" in first_output
     assert first_output.endswith(b"\x1b[u")
     assert writes == []
 
@@ -53,8 +53,24 @@ def test_renderer_repositions_idle_motion_without_retransmitting_png() -> None:
     renderer.render((moved,), A)
 
     output = b"".join(writes)
-    assert b"a=p,i=1001,p=1,c=5,r=2,C=1,X=9,Y=3,z=1" in output
+    assert b"a=p,i=1000,p=1,c=5,r=2,C=1,X=9,Y=3,z=1" in output
     assert b"a=T" not in output
+    assert b"a=T" not in output
+
+
+def test_renderer_transmits_shared_asset_once_for_multiple_flowers() -> None:
+    runtime = FlowerCursorRuntime(retain_departures=True)
+    runtime.move_to(A)
+    runtime.update(0.05)
+    runtime.move_to(B)
+    writes: list[bytes] = []
+    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+
+    renderer.render(runtime.visuals(), B)
+
+    output = b"".join(writes)
+    assert output.count(b"a=T") == 1
+    assert b"a=p,i=1000,p=2" in output
 
 
 def test_renderer_deletes_flowers_removed_from_the_runtime() -> None:
@@ -72,4 +88,4 @@ def test_renderer_deletes_flowers_removed_from_the_runtime() -> None:
     writes.clear()
     renderer.render(runtime.visuals(), B)
 
-    assert b"a=d,d=i,i=1001,p=1,q=2;" in b"".join(writes)
+    assert b"a=d,d=i,i=1000,p=1,q=2;" in b"".join(writes)

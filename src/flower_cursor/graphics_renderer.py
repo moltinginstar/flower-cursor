@@ -38,13 +38,15 @@ class FlowerRenderer:
         self._z_index = z_index
         self._placements: dict[int, tuple[CursorCell, str, int, int]] = {}
         self._png_cache: dict[str, bytes] = {}
+        self._asset_image_ids: dict[str, int] = {}
+        self._transmitted_assets: set[str] = set()
 
     def render(self, visuals: tuple[FlowerVisual, ...], current_cell: CursorCell) -> None:
         visible_ids = {visual.identifier for visual in visuals}
         for visual in visuals:
             previous = self._placements.get(visual.identifier)
             x_offset, y_offset = self._idle_offsets(visual)
-            current = (visual.cell, visual.asset.name, x_offset, y_offset)
+            current = (visual.cell, str(visual.asset.path), x_offset, y_offset)
             if previous == current:
                 continue
             if previous is not None and previous[:2] == current[:2]:
@@ -54,17 +56,18 @@ class FlowerRenderer:
             self._placements[visual.identifier] = current
 
         for identifier in set(self._placements) - visible_ids:
+            _, asset_key, _, _ = self._placements[identifier]
             delete_placement(
-                image_id=self._image_id(identifier),
+                image_id=self._asset_image_id(asset_key),
                 placement_id=identifier,
                 write=self._write,
             )
             del self._placements[identifier]
 
     def clear(self) -> None:
-        for identifier in tuple(self._placements):
+        for identifier, (_, asset_key, _, _) in tuple(self._placements.items()):
             delete_placement(
-                image_id=self._image_id(identifier),
+                image_id=self._asset_image_id(asset_key),
                 placement_id=identifier,
                 write=self._write,
             )
@@ -83,19 +86,40 @@ class FlowerRenderer:
         )
         self._write(b"\x1b[s")
         self._move_cursor(current_cell, target)
+        previous = self._placements.get(visual.identifier)
         asset_key = str(visual.asset.path)
-        png = self._png_cache.setdefault(asset_key, visual.asset.path.read_bytes())
-        transmit_png(
-            png,
-            image_id=self._image_id(visual.identifier),
-            placement_id=visual.identifier,
-            columns=self._columns,
-            rows=self._rows,
-            x_offset=x_offset,
-            y_offset=y_offset,
-            z_index=self._z_index,
-            write=self._write,
-        )
+        if previous is not None and previous[1] != asset_key:
+            delete_placement(
+                image_id=self._asset_image_id(previous[1]),
+                placement_id=visual.identifier,
+                write=self._write,
+            )
+        image_id = self._asset_image_id(asset_key)
+        if asset_key in self._transmitted_assets:
+            place_image(
+                image_id=image_id,
+                placement_id=visual.identifier,
+                columns=self._columns,
+                rows=self._rows,
+                x_offset=x_offset,
+                y_offset=y_offset,
+                z_index=self._z_index,
+                write=self._write,
+            )
+        else:
+            png = self._png_cache.setdefault(asset_key, visual.asset.path.read_bytes())
+            transmit_png(
+                png,
+                image_id=image_id,
+                placement_id=visual.identifier,
+                columns=self._columns,
+                rows=self._rows,
+                x_offset=x_offset,
+                y_offset=y_offset,
+                z_index=self._z_index,
+                write=self._write,
+            )
+            self._transmitted_assets.add(asset_key)
         self._write(b"\x1b[u")
 
     def _reposition(
@@ -112,7 +136,7 @@ class FlowerRenderer:
         self._write(b"\x1b[s")
         self._move_cursor(current_cell, target)
         place_image(
-            image_id=self._image_id(visual.identifier),
+            image_id=self._asset_image_id(str(visual.asset.path)),
             placement_id=visual.identifier,
             columns=self._columns,
             rows=self._rows,
@@ -141,6 +165,9 @@ class FlowerRenderer:
         elif column_delta > 0:
             self._write(f"\x1b[{column_delta}C".encode("ascii"))
 
-    @staticmethod
-    def _image_id(identifier: int) -> int:
-        return 1000 + identifier
+    def _asset_image_id(self, asset_key: str) -> int:
+        image_id = self._asset_image_ids.get(asset_key)
+        if image_id is None:
+            image_id = 1000 + len(self._asset_image_ids)
+            self._asset_image_ids[asset_key] = image_id
+        return image_id
