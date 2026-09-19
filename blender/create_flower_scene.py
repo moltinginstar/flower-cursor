@@ -408,21 +408,23 @@ def add_petal_ring(
     opening = clamp01(bloom)
     spread = 0.05 + 0.95 * opening
     petal_scale = 0.45 + 0.55 * opening
-    head_pitch = 0.24 + 0.05 * opening
+    head_pitch = 0.36 + 0.08 * opening
     for index in range(STYLE.petal_count):
         base_angle = 2 * math.pi * index / STYLE.petal_count + 0.42
         angle = base_angle * spread + 0.055 * math.sin(index * 2.7)
         radial = Vector((math.sin(angle), 0.0, math.cos(angle)))
+        petal_variation = 0.88 + 0.16 * (0.5 + 0.5 * math.sin(index * 1.9))
         obj = shaped_mesh(
             f"Petal_{index:02d}",
             petal_mats[index % len(petal_mats)],
             shape=STYLE.petal_profile,
-            length=STYLE.petal_length * petal_scale,
-            width=STYLE.petal_width * petal_scale,
+            length=STYLE.petal_length * petal_scale * petal_variation,
+            width=STYLE.petal_width * petal_scale * (0.94 + 0.08 * math.cos(index * 1.4)),
             curl=(0.07 + 0.13 * opening) + 0.16 * droop,
             ridge=0.052 + 0.025 * opening,
         )
-        obj.location = center + radial * (0.03 + 0.09 * opening)
+        petal_depth = 0.055 * math.sin(base_angle + 0.35)
+        obj.location = center + radial * (0.03 + 0.09 * opening) + Vector((0.0, petal_depth, 0.0))
         obj.rotation_euler[1] = angle
         obj.rotation_euler[0] = head_pitch + droop * 0.65 * math.sin(base_angle)
         obj.rotation_euler[2] = 0.05 * math.sin(base_angle * 2.0)
@@ -516,12 +518,12 @@ def add_center(
 
 
 def add_camera() -> None:
-    bpy.ops.object.camera_add(location=(2.65, -8.5, 1.35))
+    bpy.ops.object.camera_add(location=(4.30, -7.50, 1.45))
     camera = bpy.context.object
     camera.name = "Flower_Camera"
     camera.data.type = "ORTHO"
     camera.data.ortho_scale = 3.35
-    direction = Vector((0.08, 0.0, 1.25)) - camera.location
+    direction = Vector((0.10, 0.0, 1.28)) - camera.location
     camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
     bpy.context.scene.camera = camera
 
