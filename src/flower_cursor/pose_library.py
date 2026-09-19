@@ -18,6 +18,11 @@ class PoseAsset:
     vitality: float
     path: Path
     idle_phase: float = 0.0
+    stem_length: float = 0.0
+    leaf_unfurl: float = 0.0
+    petal_open: float = 0.0
+    head_lean: float = 0.0
+    stem_bend: float = 0.0
 
 
 class PoseLibrary:
@@ -37,6 +42,11 @@ class PoseLibrary:
                 vitality=item["vitality"],
                 path=manifest_path.parent / item["file"],
                 idle_phase=item.get("idle_phase", 0.0),
+                stem_length=item.get("stem_length", item.get("stem", 0.0)),
+                leaf_unfurl=item.get("leaf_unfurl", 0.0),
+                petal_open=item.get("petal_open", item.get("bloom", 0.0)),
+                head_lean=item.get("head_lean", 0.0),
+                stem_bend=item.get("stem_bend", 0.0),
             )
             for item in data["poses"]
         )
@@ -59,16 +69,34 @@ class PoseLibrary:
             0.0, min(1.0, (pose.vitality - 0.95) / 0.05)
         )
 
+        extended_state = any(
+            (
+                pose.bud_size,
+                pose.leaf_unfurl,
+                pose.petal_open,
+                pose.head_lean,
+                pose.stem_bend,
+            )
+        )
+
         def score(asset: PoseAsset) -> tuple[float, str]:
             phase_distance = abs(
                 (asset.idle_phase - pose.idle_phase + math.pi) % math.tau - math.pi
             )
-            return (
+            score_value = (
                 (asset.stem - pose.stem) ** 2
                 + (asset.bloom - pose.bloom) ** 2
                 + (asset.vitality - pose.vitality) ** 2
-                + mature_factor * 0.08 * phase_distance**2,
-                asset.name,
+                + mature_factor * 0.08 * phase_distance**2
             )
+            if extended_state:
+                score_value += (
+                    0.30 * (asset.stem_length - pose.stem) ** 2
+                    + 0.25 * (asset.leaf_unfurl - pose.leaf_unfurl) ** 2
+                    + 0.15 * (asset.petal_open - pose.petal_open) ** 2
+                    + 0.15 * (asset.head_lean - pose.head_lean) ** 2
+                    + 0.15 * (asset.stem_bend - pose.stem_bend) ** 2
+                )
+            return (score_value, asset.name)
 
         return min(self._assets, key=score)

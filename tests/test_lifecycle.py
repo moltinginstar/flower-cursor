@@ -37,6 +37,25 @@ def test_withering_starts_from_the_interrupted_pose() -> None:
     lifecycle.update(0.12)
     assert flower.pose.bloom < interrupted.bloom
     assert flower.pose.stem < interrupted.stem
+    assert flower.pose.leaf_unfurl <= interrupted.leaf_unfurl
+
+
+def test_mature_flower_withers_bloom_before_stem() -> None:
+    lifecycle = FlowerLifecycle(retain_departures=True)
+    flower = lifecycle.move_to(A)
+    lifecycle.update(1.0)
+    lifecycle.move_to(B)
+
+    lifecycle.update(0.1)
+    early = flower.pose
+    assert early.bloom < early.stem
+    assert early.leaf_unfurl > early.bloom
+    assert early.stem_bend < 0.1
+
+    lifecycle.update(0.2)
+    late = flower.pose
+    assert late.stem_bend > early.stem_bend
+    assert late.bloom < early.bloom
 
 
 def test_returning_to_a_withering_cell_reverses_the_same_flower() -> None:
