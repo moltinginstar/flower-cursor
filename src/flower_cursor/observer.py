@@ -15,7 +15,8 @@ from .graphics_renderer import FlowerRenderer
 from .lifecycle import CursorCell
 from .output_arbiter import OutputArbiter
 from .pty_runner import run
-from .runtime import FlowerCursorRuntime
+
+DEFAULT_MANIFEST = Path(__file__).with_name("assets") / "layered" / "manifest.json"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=1 / 60,
         help="seconds between independent animation/render ticks",
     )
+    parser.add_argument(
+        "--shedding-manifest", type=Path, help="override the bundled layered flower assets"
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
 
@@ -53,7 +57,15 @@ def main(argv: list[str] | None = None) -> int:
     log_file = args.log.open("w") if args.log is not None else None
     previous: CursorCell | None = None
     current_cell: CursorCell | None = None
-    runtime = FlowerCursorRuntime() if args.render else None
+    manifest = args.shedding_manifest or (DEFAULT_MANIFEST if args.render else None)
+    if manifest is not None:
+        from .layered import LayeredCompositor, LayeredRuntime
+
+        runtime = LayeredRuntime(manifest)
+        compositor = LayeredCompositor(manifest)
+    else:
+        runtime = None
+        compositor = None
     output = sys.stdout.buffer
 
     def write_output(data: bytes) -> None:
@@ -62,7 +74,14 @@ def main(argv: list[str] | None = None) -> int:
 
     output_arbiter = OutputArbiter(write_output)
     renderer = (
-        FlowerRenderer(runtime.pose_library, output_arbiter.write) if runtime is not None else None
+        FlowerRenderer(
+            runtime.pose_library,
+            output_arbiter.write,
+            compositor=compositor,
+            canvas_scale=2,
+        )
+        if runtime is not None
+        else None
     )
 
     def on_cursor(cell: CursorCell) -> None:
@@ -77,7 +96,18 @@ def main(argv: list[str] | None = None) -> int:
             log_file.write(f"{time.time():.6f} {cell.row} {cell.column}\n")
             log_file.flush()
 
+    def on_output(data: bytes) -> bool:
+        nonlocal current_cell, previous
+        if renderer is not None and renderer.observe_terminal_output(data):
+            current_cell = previous = None
+            if runtime is not None:
+                runtime.reset()
+            return True
+        return False
+
     def on_tick(duration: float) -> None:
+        if renderer is not None:
+            renderer.flush_pending()
         if runtime is not None and renderer is not None and current_cell is not None:
             runtime.update(duration)
             rows, columns, width, height = struct.unpack(
@@ -102,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
             on_cursor=on_cursor if log_file is not None or runtime is not None else None,
             on_tick=on_tick if runtime is not None else None,
             on_close=close_graphics if renderer is not None else None,
-            on_output=renderer.observe_terminal_output if renderer is not None else None,
+            on_output=on_output if renderer is not None else None,
             output_arbiter=output_arbiter,
             query_interval=args.interval,
             tick_interval=args.render_interval,
@@ -114,6 +144,10 @@ def main(argv: list[str] | None = None) -> int:
             output.flush()
         if log_file is not None:
             log_file.close()
+
+
+def shell_main() -> int:
+    return main(["--render", *sys.argv[1:]])
 
 
 if __name__ == "__main__":

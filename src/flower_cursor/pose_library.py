@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,6 +38,13 @@ class PoseLibrary:
             raise ValueError("pose library must contain at least one asset")
         self._assets = assets
         self.root_anchor = root_anchor
+        idle = {
+            asset.idle_phase % math.tau: asset
+            for asset in assets
+            if asset.name.startswith(("idle_", "mature_idle_"))
+        }
+        self._idle_phases = tuple(sorted(idle))
+        self._idle_assets = tuple(idle[phase] for phase in self._idle_phases)
 
     @classmethod
     def from_manifest(cls, manifest_path: Path) -> PoseLibrary:
@@ -88,6 +96,30 @@ class PoseLibrary:
         ]
         total = sum(weight for _, weight in weighted)
         return tuple((asset, weight / total) for asset, weight in weighted if weight > 1e-8)
+
+    def sample_animated(self, pose: FlowerPose) -> tuple[tuple[PoseAsset, float], ...]:
+        """Blend into a phase-linear idle ring as the biological state settles."""
+        progress = max(0.0, min(1.0, (min(pose.stem, pose.bloom, pose.vitality) - 0.95) / 0.045))
+        if progress == 0 or len(self._idle_assets) < 2:
+            return self.sample(pose)
+        phase = pose.idle_phase % math.tau
+        upper = bisect_right(self._idle_phases, phase) % len(self._idle_assets)
+        lower = (upper - 1) % len(self._idle_assets)
+        span = (self._idle_phases[upper] - self._idle_phases[lower]) % math.tau
+        fraction = ((phase - self._idle_phases[lower]) % math.tau) / span
+        idle = tuple(
+            (self._idle_assets[index], weight)
+            for index, weight in ((lower, 1 - fraction), (upper, fraction))
+            if weight > 0
+        )
+        if progress == 1:
+            return idle
+        amount = progress * progress * (3 - 2 * progress)
+        weights: dict[PoseAsset, float] = {}
+        for samples, gain in ((self.sample(pose), 1 - amount), (idle, amount)):
+            for asset, weight in samples:
+                weights[asset] = weights.get(asset, 0.0) + weight * gain
+        return tuple(weights.items())
 
     def _ranked(self, pose: FlowerPose) -> list[tuple[float, PoseAsset]]:
         mature_factor = max(0.0, min(1.0, (pose.bloom - 0.95) / 0.05)) * max(

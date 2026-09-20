@@ -200,6 +200,10 @@ class FlowerLifecycle:
             None,
         )
 
+    def reset(self) -> None:
+        self._flowers.clear()
+        self._active_identifier = None
+
     def move_to(self, cell: CursorCell) -> FlowerInstance:
         """Move the logical cursor immediately and retarget the visible flowers."""
         current = self.active

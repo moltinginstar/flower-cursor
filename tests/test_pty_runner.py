@@ -102,6 +102,77 @@ raise SystemExit(run(
     return bytes(output), returncode, queries_seen, stderr
 
 
+def test_cursor_reports_keep_query_order_and_discard_previous_screen_generation() -> None:
+    child_code = (
+        "import os,time,select,tty; tty.setraw(0); time.sleep(0.08); "
+        "os.write(1,b'\\x1b[?1049h'); time.sleep(0.08); "
+        "os.write(1,b'CHILD_QUERY\\x1b[6n'); "
+        "assert select.select([0],[],[],2)[0]; "
+        "answer=os.read(0,128); assert answer==b'\\x1b[9;9R',repr(answer); "
+        "os.write(1,b'CHILD_OK'); time.sleep(0.05)"
+    )
+    runner_code = f"""
+import sys
+from flower_cursor.pty_runner import run
+raise SystemExit(run(
+    [sys.executable, '-c', {child_code!r}],
+    on_output=lambda data: b'\\x1b[?1049h' in data,
+    on_cursor=lambda cell: print(f'CURSOR={{cell.row}},{{cell.column}}', file=sys.stderr),
+    query_interval=0.01,
+))
+"""
+    master_fd, slave_fd = pty.openpty()
+    process = subprocess.Popen(
+        [sys.executable, "-c", runner_code], stdin=slave_fd, stdout=slave_fd,
+        stderr=subprocess.PIPE, close_fds=True,
+    )
+    os.close(slave_fd)
+    output = bytearray()
+    queries_seen = 0
+    deadline = time.monotonic() + 5
+    try:
+        while time.monotonic() < deadline:
+            readable, _, _ = select.select([master_fd], [], [], 0.05)
+            if readable:
+                try:
+                    data = os.read(master_fd, 65536)
+                except OSError:
+                    break
+                if not data:
+                    break
+                output.extend(data)
+                if b"CHILD_QUERY" not in output:
+                    continue
+                start = 0
+                positions = []
+                while (start := output.find(b"\x1b[6n", start)) >= 0:
+                    positions.append(start)
+                    start += 4
+                switch = output.index(b"\x1b[?1049h")
+                for position in positions[queries_seen:]:
+                    if output[max(0, position - 11):position] == b"CHILD_QUERY":
+                        response = b"\x1b[9;9R"
+                    elif position < switch:
+                        response = b"\x1b[1;1R"
+                    else:
+                        response = b"\x1b[10;20R"
+                    os.write(master_fd, response)
+                queries_seen = len(positions)
+            elif process.poll() is not None:
+                break
+        returncode = process.wait(timeout=5)
+        stderr = process.stderr.read() if process.stderr is not None else b""
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.wait(timeout=5)
+        os.close(master_fd)
+    assert returncode == 0, stderr.decode()
+    assert b"CHILD_OK" in output
+    assert stderr.splitlines()
+    assert set(stderr.splitlines()) == {b"CURSOR=9,19"}
+
+
 def test_runner_does_not_spin_on_expired_deadlines_while_output_is_blocked() -> None:
     child_code = (
         "import os,time; os.write(1,b'\\x1b_Ga=T;'); time.sleep(0.15); os.write(1,b'AAAA\\x1b\\\\')"

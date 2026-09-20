@@ -41,6 +41,9 @@ class FlowerCursorRuntime:
         active = self.lifecycle.active
         return active.cell if active is not None else None
 
+    def reset(self) -> None:
+        self.lifecycle.reset()
+
     def move_to(self, cell: CursorCell) -> None:
         self.lifecycle.move_to(cell)
 

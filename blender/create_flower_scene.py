@@ -686,7 +686,7 @@ def configure_render(render_path: Path) -> bpy.types.Scene:
     return scene
 
 
-def main(pose_name: str) -> None:
+def build_scene(pose_name: str) -> bpy.types.Scene:
     if pose_name not in POSES:
         raise ValueError(f"unknown pose: {pose_name}")
     pose = POSES[pose_name]
@@ -801,7 +801,12 @@ def main(pose_name: str) -> None:
                 obj.scale *= remaining
     add_camera()
     add_lights()
-    scene = configure_render(render_path)
+    return configure_render(render_path)
+
+
+def main(pose_name: str) -> None:
+    scene = build_scene(pose_name)
+    render_path = Path(scene.render.filepath)
     if pose_name == "mature" and SAVE_BLEND:
         bpy.ops.wm.save_as_mainfile(filepath=str(BLEND_PATH), check_existing=False)
     write_manifest()
@@ -820,10 +825,11 @@ def main(pose_name: str) -> None:
     )
 
 
-requested = os.environ.get("FLOWER_POSES", "")
-for pose_name in (
-    (list(POSES) if requested == "all" else requested.split(","))
-    if requested
-    else [globals().get("FLOWER_POSE", os.environ.get("FLOWER_POSE", "mature"))]
-):
-    main(pose_name)
+if __name__ == "__main__":
+    requested = os.environ.get("FLOWER_POSES", "")
+    for pose_name in (
+        (list(POSES) if requested == "all" else requested.split(","))
+        if requested
+        else [globals().get("FLOWER_POSE", os.environ.get("FLOWER_POSE", "mature"))]
+    ):
+        main(pose_name)

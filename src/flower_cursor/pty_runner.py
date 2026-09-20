@@ -11,6 +11,7 @@ import sys
 import termios
 import time
 import tty
+from collections import deque
 from collections.abc import Callable, Sequence
 
 from .cursor_report import CursorReportParser
@@ -44,7 +45,7 @@ def run(
     on_cursor: Callable[[CursorCell], None] | None = None,
     on_tick: Callable[[float], None] | None = None,
     on_close: Callable[[], None] | None = None,
-    on_output: Callable[[bytes], None] | None = None,
+    on_output: Callable[[bytes], bool | None] | None = None,
     output_arbiter: OutputArbiter | None = None,
     query_interval: float = 1 / 30,
     tick_interval: float = 1 / 60,
@@ -70,7 +71,8 @@ def run(
     parser = CursorReportParser()
     output_arbiter = output_arbiter or OutputArbiter(lambda data: _write_all(stdout_fd, data))
     selector = selectors.DefaultSelector()
-    child_queries_pending = 0
+    cursor_queries: deque[int | None] = deque()
+    cursor_generation = 0
     child_output_tail = b""
     cursor_visibility = CursorVisibilityFilter() if hide_cursor else None
     resize_pending = True
@@ -114,10 +116,10 @@ def run(
                     if passthrough:
                         _write_all(master_fd, passthrough)
                     for report in reports:
-                        if child_queries_pending:
+                        generation = cursor_queries.popleft() if cursor_queries else None
+                        if generation is None:
                             _write_all(master_fd, report.raw)
-                            child_queries_pending -= 1
-                        if on_cursor is not None:
+                        elif generation == cursor_generation and on_cursor is not None:
                             on_cursor(report.cell)
                 else:
                     try:
@@ -134,10 +136,10 @@ def run(
                     )
                     if data:
                         output_arbiter.feed_child(data)
-                        if on_output is not None:
-                            on_output(data)
+                        if on_output is not None and on_output(data):
+                            cursor_generation += 1
                     child_output = child_output_tail + raw_data
-                    child_queries_pending += child_output.count(_CPR_QUERY)
+                    cursor_queries.extend(None for _ in range(child_output.count(_CPR_QUERY)))
                     child_output_tail = child_output[-len(_CPR_QUERY) + 1 :]
 
             if resize_pending:
@@ -151,7 +153,9 @@ def run(
                 missed_ticks = max(1, math.ceil((now - next_tick) / tick_interval))
                 next_tick += missed_ticks * tick_interval
             if now >= next_query and output_arbiter.can_write:
-                output_arbiter.write(_CPR_QUERY)
+                if len(cursor_queries) < 256:
+                    output_arbiter.write(_CPR_QUERY)
+                    cursor_queries.append(cursor_generation)
                 next_query = now + query_interval
             waited_pid, status = os.waitpid(child_pid, os.WNOHANG)
             if waited_pid == child_pid:

@@ -12,6 +12,12 @@ dependencies = [
     "pillow>=11.3",
 ]
 
+[project.scripts]
+flower-cursor = "flower_cursor.observer:shell_main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/flower_cursor"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",

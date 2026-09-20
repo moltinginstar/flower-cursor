@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from typing import Protocol
 
 from PIL import Image
 
 from .runtime import FlowerVisual
+
+
+class FrameCompositor(Protocol):
+    def frame(self, visual: FlowerVisual, duration: float = 1 / 60) -> Image.Image: ...
+
+    def retain(self, identifiers: set[int]) -> None: ...
 
 
 class FlowerCompositor:

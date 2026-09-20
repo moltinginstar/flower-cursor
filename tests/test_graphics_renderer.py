@@ -8,6 +8,7 @@ from PIL import Image
 
 from flower_cursor.graphics_renderer import FlowerRenderer
 from flower_cursor.lifecycle import CursorCell
+from flower_cursor.pose_library import PoseLibrary
 from flower_cursor.runtime import FlowerCursorRuntime
 
 A = CursorCell(4, 8)
@@ -23,7 +24,8 @@ def commands(output: bytes) -> list[tuple[dict[str, str], bytes]]:
 
 def transmitted_image(output: bytes) -> Image.Image:
     payload = b"".join(
-        payload for parameters, payload in commands(output)
+        payload
+        for parameters, payload in commands(output)
         if parameters.get("a") == "T" or "a" not in parameters
     )
     image = Image.open(io.BytesIO(base64.b64decode(payload)))
@@ -56,6 +58,38 @@ def test_renderer_uses_absolute_placement_and_native_pixels_at_the_root() -> Non
     assert "c" not in parameters and "r" not in parameters
     assert output.startswith(b"\x1b[s")
     assert output.endswith(b"\x1b[u")
+
+
+def test_expanded_canvas_preserves_root_position_and_native_flower_scale() -> None:
+    runtime = FlowerCursorRuntime()
+    runtime.move_to(A)
+    runtime.update(0.35)
+    old_root = runtime.pose_library.root_anchor
+    expanded = PoseLibrary(
+        runtime.pose_library.assets, root_anchor=(old_root[0] / 2 + 0.25, old_root[1] / 2)
+    )
+
+    class ExpandedCompositor:
+        def frame(self, visual, duration):
+            return Image.new("RGBA", (256, 256))
+
+        def retain(self, identifiers):
+            pass
+
+    writes = []
+    renderer = FlowerRenderer(
+        expanded, writes.append, compositor=ExpandedCompositor(), canvas_scale=2
+    )
+    renderer.render(runtime.visuals(), A, cell_size=(16, 33))
+    output = b"".join(writes)
+    parameters = commands(output)[0][0]
+    image = transmitted_image(output)
+    row, column = map(int, re.search(rb"\x1b\[(\d+);(\d+)H", output).groups())
+    root_x = (column - 1) * 16 + int(parameters["X"]) + expanded.root_anchor[0] * image.width
+    assert image.size == (144, 128)
+    assert abs(root_x - A.column * 16) <= 0.5
+    assert row == A.row
+    assert expanded.root_anchor[1] * image.height == pytest.approx(old_root[1] * 64)
 
 
 def test_renderer_skips_unchanged_pixels_and_alternates_two_image_slots() -> None:
@@ -125,10 +159,20 @@ def test_renderer_frees_removed_images_and_cleanup_is_idempotent(clear: bool) ->
     assert writes == []
 
 
-@pytest.mark.parametrize("reset", [
-    b"\x1b[2J", b"\x1b[3J", b"\x1bc", b"\x1b[?47h", b"\x1b[?47l",
-    b"\x1b[?1047h", b"\x1b[?1047l", b"\x1b[?1049h", b"\x1b[?1049l",
-])
+@pytest.mark.parametrize(
+    "reset",
+    [
+        b"\x1b[2J",
+        b"\x1b[3J",
+        b"\x1bc",
+        b"\x1b[?47h",
+        b"\x1b[?47l",
+        b"\x1b[?1047h",
+        b"\x1b[?1047l",
+        b"\x1b[?1049h",
+        b"\x1b[?1049l",
+    ],
+)
 def test_screen_reset_split_across_chunks_reuploads_unchanged_frame(reset: bytes) -> None:
     runtime = FlowerCursorRuntime()
     runtime.move_to(A)
@@ -144,6 +188,56 @@ def test_screen_reset_split_across_chunks_reuploads_unchanged_frame(reset: bytes
     renderer.observe_terminal_output(reset[-1:])
     renderer.render(runtime.visuals(), A)
     assert any(p.get("a") == "T" for p, _ in commands(b"".join(writes)))
+
+
+@pytest.mark.parametrize("mode", [b"47", b"1047", b"1049", b"25;1049"])
+def test_restored_screen_cleans_its_own_retired_placements(mode: bytes) -> None:
+    runtime = FlowerCursorRuntime()
+    runtime.move_to(A)
+    runtime.update(0.35)
+    visual = runtime.visuals()[0]
+    writes: list[bytes] = []
+    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer.render((visual,), A)
+    main_id = commands(b"".join(writes))[0][0]["i"]
+    writes.clear()
+
+    assert renderer.observe_terminal_output(b"\x1b[?" + mode + b"h")
+    assert writes == []
+    renderer.render((replace(visual, identifier=99),), B)
+    alternate_id = next(p["i"] for p, _ in commands(b"".join(writes)) if p.get("a") == "T")
+    writes.clear()
+
+    assert renderer.observe_terminal_output(b"\x1b[?" + mode + b"l")
+    assert writes == []
+    renderer.render((), A)
+    assert commands(b"".join(writes)) == [
+        ({"a": "d", "d": "I", "i": main_id, "p": str(visual.identifier), "q": "2"}, b"")
+    ]
+    writes.clear()
+    renderer.observe_terminal_output(b"\x1b[?" + mode + b"h")
+    renderer.render((), B)
+    assert commands(b"".join(writes)) == [
+        ({"a": "d", "d": "I", "i": alternate_id, "p": "99", "q": "2"}, b"")
+    ]
+
+
+def test_pending_cleanup_does_not_need_a_cursor_or_new_frame() -> None:
+    runtime = FlowerCursorRuntime()
+    runtime.move_to(A)
+    runtime.update(0.35)
+    writes: list[bytes] = []
+    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer.render(runtime.visuals(), A)
+    writes.clear()
+    assert not renderer.observe_terminal_output(b"\x1b[2")
+    assert renderer.observe_terminal_output(b"J")
+    assert writes == []
+    renderer.flush_pending()
+    assert len(commands(b"".join(writes))) == 1
+    writes.clear()
+    renderer.flush_pending()
+    assert writes == []
 
 
 def test_ordinary_output_does_not_invalidate_the_frame() -> None:

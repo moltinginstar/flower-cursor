@@ -1,4 +1,5 @@
 import json
+import math
 from dataclasses import replace
 from pathlib import Path
 
@@ -83,6 +84,44 @@ def test_interpolated_samples_have_positive_normalized_weights() -> None:
     assert all(0 < weight < 1 for _, weight in samples)
     assert sum(weight for _, weight in samples) == pytest.approx(1.0)
     assert samples[0][0] == library.select(pose)
+
+
+@pytest.mark.parametrize("phase, expected", [(0, 0), (math.pi / 4, 0.25),
+                                             (math.pi / 2, 0.5), (math.pi, 1)])
+def test_animated_idle_interpolates_phase_without_exit_neighbors(phase, expected) -> None:
+    left = PoseAsset("idle_00", 1, 1, 1, Path("left.png"), idle_phase=0)
+    right = replace(left, name="idle_12", path=Path("right.png"), idle_phase=math.pi)
+    poison = replace(left, name="exit_full_00", idle_phase=phase)
+    library = PoseLibrary((left, right, poison))
+    samples = dict(library.sample_animated(pose_for(poison)))
+    assert poison not in samples
+    assert samples.get(left, 0) == pytest.approx(1 - expected)
+    assert samples.get(right, 0) == pytest.approx(expected)
+
+
+def test_animated_idle_wraps_and_preserves_non_idle_sampling() -> None:
+    left = PoseAsset("idle_00", 1, 1, 1, Path("left.png"), idle_phase=0)
+    right = replace(left, name="idle_12", idle_phase=math.pi)
+    young = replace(left, name="grow_00", bloom=0.2)
+    library = PoseLibrary((left, right, young))
+    samples = dict(library.sample_animated(replace(pose_for(left), idle_phase=-math.pi / 4)))
+    assert samples[left] == pytest.approx(0.75)
+    assert samples[right] == pytest.approx(0.25)
+    assert library.sample_animated(pose_for(young)) == library.sample(pose_for(young))
+    assert PoseLibrary((young,)).sample_animated(pose_for(left)) == ((young, 1.0),)
+
+
+def test_animated_idle_entry_blends_continuously() -> None:
+    left = PoseAsset("idle_00", 1, 1, 1, Path("left.png"))
+    right = replace(left, name="idle_12", idle_phase=math.pi)
+    growing = replace(left, name="grow_35", bloom=0.95, idle_phase=math.pi / 2)
+    library = PoseLibrary((left, right, growing))
+    for boundary in (0.95, 0.995):
+        before = dict(library.sample_animated(replace(pose_for(growing), bloom=boundary - 1e-7)))
+        after = dict(library.sample_animated(replace(pose_for(growing), bloom=boundary + 1e-7)))
+        assert sum(before.values()) == pytest.approx(1)
+        assert sum(after.values()) == pytest.approx(1)
+        assert max(abs(before.get(a, 0) - after.get(a, 0)) for a in library.assets) < 1e-4
 
 
 def test_empty_library_is_rejected() -> None:
