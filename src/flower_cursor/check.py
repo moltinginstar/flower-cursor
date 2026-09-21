@@ -92,7 +92,7 @@ def _unmanaged_shell(config: Path) -> str | None:
 
 
 def _environment_lines() -> list[tuple[str, str, str]]:
-    from .observer import FLOWER_MANIFESTS, SPECIES_VARIABLE
+    from .observer import BUZZ_VARIABLE, FLOWER_MANIFESTS, SPECIES_VARIABLE, buzz_volume
 
     lines = []
     species = os.environ.get(SPECIES_VARIABLE)
@@ -107,6 +107,16 @@ def _environment_lines() -> list[tuple[str, str, str]]:
     disable = os.environ.get("FLOWER_CURSOR_DISABLE", "0")
     if disable != "0":
         lines.append((_WARN, "FLOWER_CURSOR_DISABLE", f"{disable!r}, so this window has no flower"))
+    buzz = os.environ.get(BUZZ_VARIABLE)
+    if buzz is not None:
+        # `buzz_volume` is what the wrapper itself would make of the value, so
+        # asking it is the only way to report the volume a window will use
+        # rather than the one the variable appears to ask for.
+        volume = buzz_volume(None)
+        if volume > 0:
+            lines.append((_OK, BUZZ_VARIABLE, f"{buzz}, and the sound extra is needed for it"))
+        else:
+            lines.append((_WARN, BUZZ_VARIABLE, f"{buzz!r} leaves the bee silent"))
     return lines
 
 

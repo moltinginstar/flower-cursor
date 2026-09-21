@@ -80,6 +80,26 @@ def test_a_known_species_is_reported_plainly(monkeypatch: pytest.MonkeyPatch) ->
     assert lines["FLOWER_CURSOR_SPECIES"] == (check._OK, "crocus")
 
 
+def test_a_buzz_volume_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FLOWER_CURSOR_BUZZ", "0.4")
+    lines = {label: status for status, label, _ in check._environment_lines()}
+    assert lines["FLOWER_CURSOR_BUZZ"] == check._OK
+
+
+def test_an_unreadable_buzz_volume_is_reported_as_silence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FLOWER_CURSOR_BUZZ", "loud")
+    lines = {label: status for status, label, _ in check._environment_lines()}
+    assert lines["FLOWER_CURSOR_BUZZ"] == check._WARN
+
+
+def test_a_buzz_of_zero_is_reported_as_silence(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FLOWER_CURSOR_BUZZ", "0")
+    lines = {label: status for status, label, _ in check._environment_lines()}
+    assert lines["FLOWER_CURSOR_BUZZ"] == check._WARN
+
+
 def test_a_disabled_window_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FLOWER_CURSOR_DISABLE", "1")
     labels = [label for _, label, _ in check._environment_lines()]
@@ -109,6 +129,7 @@ def installed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(check, "_kitty_version", lambda: "kitty 0.49.0")
     monkeypatch.delenv("FLOWER_CURSOR_DISABLE", raising=False)
     monkeypatch.delenv("FLOWER_CURSOR_SPECIES", raising=False)
+    monkeypatch.delenv("FLOWER_CURSOR_BUZZ", raising=False)
     # Only the flowers whose assets are committed, so this says something about
     # the report rather than about who has rendered what lately.
     monkeypatch.setattr(
