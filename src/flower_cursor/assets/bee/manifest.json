@@ -1,0 +1,24 @@
+{
+  "frames": [
+    "bee_00.png",
+    "bee_01.png",
+    "bee_02.png",
+    "bee_03.png",
+    "bee_04.png",
+    "bee_05.png",
+    "bee_06.png",
+    "bee_07.png",
+    "bee_08.png",
+    "bee_09.png",
+    "bee_10.png",
+    "bee_11.png",
+    "bee_12.png",
+    "bee_13.png",
+    "bee_14.png",
+    "bee_15.png"
+  ],
+  "flight_frames": 8,
+  "landing_frames": 9,
+  "author": "Blender 5.2 / bake_idle_bee.py",
+  "size": 192
+}

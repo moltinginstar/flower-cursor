@@ -10,6 +10,8 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
+from .bee import BeePose, IdleBee
+from .bee_art import BeeCompositor
 from .lifecycle import CursorCell, FlowerInstance
 from .pose_library import PoseLibrary
 from .runtime import DEFAULT_ANIMATION_SPEED, FlowerVisual
@@ -21,16 +23,26 @@ class LayeredVisual(FlowerVisual):
     flower: SheddingFlower
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BeeVisual(FlowerVisual):
+    bee: BeePose
+
+
 class LayeredRuntime:
     def __init__(self, manifest: Path) -> None:
         self.pose_library = PoseLibrary.from_manifest(manifest)
         self.flowers: list[SheddingFlower] = []
         self.active: SheddingFlower | None = None
         self._next_identifier = 1
+        self.bee = IdleBee()
+        self._bee_identifier = 0
+        self._bee_flower: SheddingFlower | None = None
+        self._heads = {p["name"]: p["head"] for p in json.loads(manifest.read_text())["poses"]}
 
     def move_to(self, cell: CursorCell) -> None:
         if self.active is not None and self.active.flower.cell == cell:
             return
+        self.bee.move_to(cell)
         if self.active is not None:
             self.active.begin_withering()
         returning = next(
@@ -49,6 +61,8 @@ class LayeredRuntime:
     def reset(self) -> None:
         self.flowers.clear()
         self.active = None
+        self.bee.reset()
+        self._bee_flower = None
 
     def update(self, duration: float) -> None:
         if not math.isfinite(duration) or duration < 0:
@@ -56,9 +70,21 @@ class LayeredRuntime:
         for flower in self.flowers:
             flower.update(duration * DEFAULT_ANIMATION_SPEED, wall_duration=duration)
         self.flowers[:] = [f for f in self.flowers if not f.finished]
+        generation = self.bee.generation
+        head = None
+        if self.active is not None:
+            samples = self.pose_library.sample_animated(self.active.pose)
+            head = tuple(sum(self._heads[a.name][i] * w for a, w in samples) for i in range(2))
+        self.bee.update(duration, head)
+        if self.bee.generation != generation:
+            self._bee_identifier = self._next_identifier
+            self._next_identifier += 1
+            self._bee_flower = self.active
+        if not self.bee.visible:
+            self._bee_flower = None
 
-    def visuals(self) -> tuple[LayeredVisual, ...]:
-        visuals = []
+    def visuals(self) -> tuple[FlowerVisual, ...]:
+        visuals: list[FlowerVisual] = []
         for flower in self.flowers:
             samples = self.pose_library.sample_animated(flower.pose)
             visuals.append(
@@ -69,6 +95,19 @@ class LayeredRuntime:
                     samples[0][0],
                     samples,
                     flower=flower,
+                )
+            )
+        if self.bee.cell is not None and self._bee_flower is not None:
+            pose = self._bee_flower.pose
+            samples = self.pose_library.sample_animated(pose)
+            visuals.append(
+                BeeVisual(
+                    self._bee_identifier,
+                    self.bee.cell,
+                    pose,
+                    samples[0][0],
+                    samples,
+                    bee=self.bee.pose,
                 )
             )
         return tuple(visuals)
@@ -84,6 +123,7 @@ class LayeredCompositor:
         self.down = data["projection_down"]
         self.size = size
         self._flights: dict[tuple[int, int], tuple | None] = {}
+        self._bee = BeeCompositor()
 
     @lru_cache(maxsize=256)
     def _image(self, path: Path) -> Image.Image:
@@ -198,6 +238,8 @@ class LayeredCompositor:
         )
 
     def frame(self, visual: FlowerVisual, duration: float = 1 / 60) -> Image.Image:
+        if isinstance(visual, BeeVisual):
+            return self._bee.frame(visual.bee, self.size)
         if not isinstance(visual, LayeredVisual):
             raise TypeError("layered compositor requires a layered visual")
         canvas = Image.new("RGBA", (self.size, self.size))
