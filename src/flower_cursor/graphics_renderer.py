@@ -38,7 +38,7 @@ class FlowerRenderer:
         anchor_rows: int = 1,
         z_index: int = 1,
         compositor: FrameCompositor | None = None,
-        canvas_scale: int = 1,
+        canvas_scale: int | None = None,
     ) -> None:
         if columns < 1 or rows < 1:
             raise ValueError("columns and rows must be positive")
@@ -55,12 +55,18 @@ class FlowerRenderer:
         self._buffers = {False: self._placements, True: {}}
         self._alternate = False
         self._invalidated: set[bool] = set()
+        self._compositor = compositor if compositor is not None else FlowerCompositor()
+        # Supersampling belongs to whoever draws the pixels: a compositor that
+        # renders at twice the cells' own resolution is the only part that
+        # knows so. An explicit scale still wins, for a caller laying out a
+        # frame it will resize itself.
+        if canvas_scale is None:
+            canvas_scale = self._compositor.canvas_scale
         if canvas_scale < 1:
             raise ValueError("canvas scale must be positive")
         self.layout = FlowerLayout(
             pose_library.root_anchor, columns, rows, anchor_columns, anchor_rows, canvas_scale
         )
-        self._compositor = compositor if compositor is not None else FlowerCompositor()
         self._output_tail = b""
         self._cell_size = (8, 16)
         # Image ids are shared with every other program drawing into this window

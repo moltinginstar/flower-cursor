@@ -2,23 +2,26 @@
 
 from __future__ import annotations
 
-import json
 import math
 import random
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 from PIL import Image, ImageOps
 
 from .bee import BeePose, IdleBee
 from .bee_art import BeeCompositor
+from .compositor import blend_samples
+from .easing import require_duration, smoothstep
 from .geometry import FlowerLayout, ViewportGeometry
 from .lifecycle import CursorCell, FlowerInstance
-from .pose_library import PoseLibrary
+from .pose_library import PoseAsset, PoseLibrary, manifest_data
 from .runtime import DEFAULT_ANIMATION_SPEED, FlowerVisual
-from .shedding import SheddingFlower, petal_decay, petal_displacement
+from .shedding import PetalFlight, SheddingFlower, petal_decay, petal_displacement
 from .species import metadata_from_manifest
+
+# One authored pose and how much of it a blend uses.
+type Samples = tuple[tuple[PoseAsset, float], ...]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -31,6 +34,20 @@ class BeeVisual(FlowerVisual):
     bee: BeePose
 
 
+# A shed petal, captured once at the instant it detached and then only moved:
+# re-blending it every frame would re-derive pixels that cannot change.
+@dataclass(frozen=True, slots=True)
+class _CapturedPetal:
+    image: Image.Image
+    center: tuple[float, float]
+    velocity: tuple[float, float, float]
+
+
+# Petals are identified per flower, so the owning flower's identifier is part
+# of the key: two flowers shed a petal numbered 1 apiece.
+type _FlightKey = tuple[int, int]
+
+
 class LayeredRuntime:
     def __init__(
         self,
@@ -39,7 +56,7 @@ class LayeredRuntime:
         bee_rng: random.Random | None = None,
         species: str | None = None,
     ) -> None:
-        data = json.loads(manifest.read_text())
+        data = manifest_data(manifest)
         self.metadata = metadata_from_manifest(data, selected_species=species)
         self.pose_library = PoseLibrary.from_manifest(manifest)
         self.flowers: list[SheddingFlower] = []
@@ -123,8 +140,7 @@ class LayeredRuntime:
         self.bee.leave()
 
     def update(self, duration: float) -> None:
-        if not math.isfinite(duration) or duration < 0:
-            raise ValueError("duration must be finite and non-negative")
+        require_duration(duration)
         for flower in self.flowers:
             flower.update(duration * DEFAULT_ANIMATION_SPEED, wall_duration=duration)
         self.flowers[:] = [f for f in self.flowers if not f.finished]
@@ -176,7 +192,7 @@ class LayeredRuntime:
 
 class LayeredCompositor:
     def __init__(self, manifest: Path, size: int = 256, *, species: str | None = None) -> None:
-        data = json.loads(manifest.read_text())
+        data = manifest_data(manifest)
         self.metadata = metadata_from_manifest(data, selected_species=species)
         self.library = PoseLibrary.from_manifest(manifest)
         self.records = {p["name"]: p for p in data["poses"]}
@@ -184,33 +200,44 @@ class LayeredCompositor:
         self.right = data["projection_right"]
         self.down = data["projection_down"]
         self.size = size
-        self._flights: dict[tuple[int, int], tuple | None] = {}
+        self._flights: dict[_FlightKey, _CapturedPetal | None] = {}
+        self._images: dict[Path, Image.Image] = {}
         self._bee = BeeCompositor()
 
-    @lru_cache(maxsize=256)
+    @property
+    def canvas_scale(self) -> int:
+        """How many canvas pixels this compositor draws per terminal pixel.
+
+        The layered artwork is authored at 256px and supersampled down, so a
+        renderer laying it out has to reserve twice the cells' own pixels or
+        the frame is scaled twice.
+        """
+        return 2
+
     def _image(self, path: Path) -> Image.Image:
-        with Image.open(path) as image:
-            result = image.convert("RGBa")
-            return (
-                result
-                if result.size == (self.size, self.size)
-                else result.resize((self.size, self.size), Image.Resampling.LANCZOS)
-            )
+        # Kept per compositor rather than in an `lru_cache` on the method: that
+        # cache is shared by every instance and keyed on `self`, so it both
+        # splits one budget across compositors and keeps each of them alive for
+        # the life of the process.
+        cached = self._images.get(path)
+        if cached is None:
+            with Image.open(path) as image:
+                result = image.convert("RGBa")
+                cached = (
+                    result
+                    if result.size == (self.size, self.size)
+                    else result.resize((self.size, self.size), Image.Resampling.LANCZOS)
+                )
+            self._images[path] = cached
+        return cached
 
-    def _blend(self, samples, layer: str) -> Image.Image:
-        result = None
-        total = 0.0
-        for asset, weight in samples:
-            image = self._image(self.directory / self.records[asset.name]["layers"][layer])
-            result = (
-                image if result is None else Image.blend(result, image, weight / (total + weight))
-            )
-            total += weight
-        if result is None:
-            raise ValueError("cannot blend an empty pose sample")
-        return result
+    def _blend(self, samples: Samples, layer: str) -> Image.Image:
+        return blend_samples(
+            samples,
+            lambda asset: self._image(self.directory / self.records[asset.name]["layers"][layer]),
+        )
 
-    def _vector(self, samples, key: str, layer: str | None = None):
+    def _vector(self, samples: Samples, key: str, layer: str | None = None):
         values = [(self.records[a.name][key], w) for a, w in samples]
         if layer is not None:
             values = [(v[layer], w) for v, w in values]
@@ -244,7 +271,7 @@ class LayeredCompositor:
         result.paste(patch, (left, top))
         return result
 
-    def _capture(self, flight):
+    def _capture(self, flight: PetalFlight) -> _CapturedPetal | None:
         samples = self.library.sample_animated(flight.pose)
         previous = self.library.sample_animated(flight.previous_pose)
         layer = self.metadata.shedding_groups[flight.index].layer
@@ -261,9 +288,9 @@ class LayeredCompositor:
             centers.append(tuple(h + (c - h) * flight.growth for h, c in zip(head, center)))
         velocity = tuple((a - b) / flight.sample_duration for a, b in zip(*centers))
         center = ((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2)
-        return image.crop(bounds), center, velocity
+        return _CapturedPetal(image.crop(bounds), center, velocity)
 
-    def _draw_flight(self, canvas: Image.Image, owner: int, flight) -> None:
+    def _draw_flight(self, canvas: Image.Image, owner: int, flight: PetalFlight) -> None:
         key = (owner, flight.identifier)
         if key not in self._flights:
             self._flights[key] = self._capture(flight)
@@ -271,7 +298,7 @@ class LayeredCompositor:
         decay = petal_decay(flight.age)
         if captured is None or decay >= 1:
             return
-        image, center, velocity = captured
+        image, center, velocity = captured.image, captured.center, captured.velocity
         brown = Image.new("RGBA", image.size, (80, 48, 28, 255))
         brown.putalpha(image.getchannel(3))
         image = Image.blend(image, brown.convert("RGBa"), decay)
@@ -330,18 +357,27 @@ class LayeredCompositor:
                         self._scale(self._blend(samples, layer), head, amount).convert("RGBA")
                     )
             if intact > 0.9:
-                blend = min(1.0, (intact - 0.9) / 0.1)
-                blend = blend * blend * (3 - 2 * blend)
+                blend = smoothstep((intact - 0.9) / 0.1)
                 canvas = Image.blend(
                     canvas.convert("RGBa"), self._blend(samples, "complete"), blend
                 ).convert("RGBA")
         for flight in flower.flights:
             self._draw_flight(canvas, visual.identifier, flight)
-        live = {(visual.identifier, f.identifier) for f in flower.flights}
-        self._flights = {
-            k: v for k, v in self._flights.items() if k[0] != visual.identifier or k in live
-        }
+        self._retire_landed_petals(visual.identifier, {f.identifier for f in flower.flights})
         return canvas
 
+    def _retire_landed_petals(self, owner: int, in_flight: set[int]) -> None:
+        """Drop this flower's petals that have finished falling.
+
+        `retain` cannot do it: a flower that is still on screen keeps its
+        identifier, so nothing there says which of its petals have landed.
+        """
+        self._flights = {
+            key: captured
+            for key, captured in self._flights.items()
+            if key[0] != owner or key[1] in in_flight
+        }
+
     def retain(self, identifiers: set[int]) -> None:
+        """Drop every petal belonging to a flower that is no longer drawn."""
         self._flights = {k: v for k, v in self._flights.items() if k[0] in identifiers}
