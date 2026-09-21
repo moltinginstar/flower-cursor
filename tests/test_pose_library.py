@@ -8,8 +8,7 @@ from PIL import Image
 
 from flower_cursor.lifecycle import FlowerPose
 from flower_cursor.pose_library import PoseAsset, PoseLibrary
-
-ROOT = Path(__file__).parents[1]
+from flower_cursor.settings import DEFAULT_MANIFEST
 
 
 def pose_for(asset: PoseAsset) -> FlowerPose:
@@ -28,11 +27,11 @@ def pose_for(asset: PoseAsset) -> FlowerPose:
 
 
 def test_default_library_loads_complete_manifest_and_decodable_rgba_assets() -> None:
-    library = PoseLibrary.default()
-    manifest = json.loads((ROOT / "assets/renders/manifest.json").read_text())
+    library = PoseLibrary.from_manifest(DEFAULT_MANIFEST)
+    manifest = json.loads(DEFAULT_MANIFEST.read_text())
     names = {asset.name for asset in library.assets}
     assert len(names) == len(library.assets) == len(manifest["poses"])
-    assert {"bud", "bloom", "mature", "wilt"}.issubset(names)
+    assert {"grow_00", "idle_00", "exit_full_24"}.issubset(names)
     assert library.root_anchor == tuple(manifest["root_anchor"])
     for asset in library.assets:
         with Image.open(asset.path) as image:
@@ -41,32 +40,32 @@ def test_default_library_loads_complete_manifest_and_decodable_rgba_assets() -> 
             image.verify()
 
 
-def test_atlas_covers_partial_exits_and_late_revivals() -> None:
-    names = {asset.name for asset in PoseLibrary.default().assets}
-    departures = ("wilt", "partial_06", "partial_13", "partial_22")
-    revivals = (*departures, "late_wilt", "late_partial_22")
-    for prefix in departures:
-        assert {f"{prefix}_00_half", f"{prefix}_40"}.issubset(names)
-    for prefix in revivals:
-        assert {f"revive_{prefix}_00_half", f"revive_{prefix}_36"}.issubset(names)
-    assert {f"mature_idle_{index:02d}" for index in range(24)}.issubset(names)
+def test_default_library_covers_every_growth_idle_and_exit_family() -> None:
+    """Each family the lifecycle can ask for is authored end to end.
+
+    A gap here is invisible until the flower reaches that state and snaps to a
+    neighbour, so the counts are asserted rather than a sample of names.
+    """
+    names = {asset.name for asset in PoseLibrary.from_manifest(DEFAULT_MANIFEST).assets}
+    for prefix, count in (("grow", 36), ("idle", 24)):
+        assert {f"{prefix}_{index:02d}" for index in range(count)}.issubset(names)
+    for prefix in ("exit_young", "exit_half", "exit_full"):
+        assert {f"{prefix}_{index:02d}" for index in range(25)}.issubset(names)
 
 
 @pytest.mark.parametrize(
     "name",
     [
-        "bloom_13",
-        "mature",
-        "mature_idle_06",
-        "wilt_20",
-        "partial_13_12",
-        "revive_wilt_10",
-        "revive_late_wilt_10",
-        "revive_late_partial_22_10",
+        "grow_13",
+        "grow_35",
+        "idle_06",
+        "exit_young_20",
+        "exit_half_12",
+        "exit_full_10",
     ],
 )
 def test_exact_authored_state_selects_a_single_matching_sample(name: str) -> None:
-    library = PoseLibrary.default()
+    library = PoseLibrary.from_manifest(DEFAULT_MANIFEST)
     asset = next(asset for asset in library.assets if asset.name == name)
     samples = library.sample(pose_for(asset))
     assert samples == ((asset, 1.0),)
@@ -74,7 +73,7 @@ def test_exact_authored_state_selects_a_single_matching_sample(name: str) -> Non
 
 @pytest.mark.parametrize("channel", ["collapse", "petal_curl", "retraction"])
 def test_exit_shape_channels_influence_selection(channel: str) -> None:
-    library = PoseLibrary.default()
+    library = PoseLibrary.from_manifest(DEFAULT_MANIFEST)
     asset = min(
         (asset for asset in library.assets if 0 < asset.retraction < 1),
         key=lambda asset: abs(asset.vitality - 0.01),
@@ -85,8 +84,8 @@ def test_exit_shape_channels_influence_selection(channel: str) -> None:
 
 
 def test_interpolated_samples_have_positive_normalized_weights() -> None:
-    library = PoseLibrary.default()
-    asset = next(asset for asset in library.assets if asset.name == "bloom_13")
+    library = PoseLibrary.from_manifest(DEFAULT_MANIFEST)
+    asset = next(asset for asset in library.assets if asset.name == "grow_13")
     pose = replace(pose_for(asset), stem=asset.stem + 0.003, bloom=asset.bloom + 0.007)
     samples = library.sample(pose)
     assert 1 < len(samples) <= 3

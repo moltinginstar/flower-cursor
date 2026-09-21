@@ -82,11 +82,6 @@ class PoseLibrary:
             raise FileNotFoundError(", ".join(missing))
         return cls(assets, root_anchor=tuple(data.get("root_anchor", (0.5, 1.0))))
 
-    @classmethod
-    def default(cls) -> PoseLibrary:
-        manifest = Path(__file__).parents[2] / "assets" / "renders" / "manifest.json"
-        return cls.from_manifest(manifest)
-
     @property
     def assets(self) -> tuple[PoseAsset, ...]:
         return self._assets

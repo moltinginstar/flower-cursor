@@ -2,17 +2,39 @@ import base64
 import io
 import re
 from dataclasses import replace
+from random import Random
 
 import pytest
 from PIL import Image
 
 from flower_cursor.graphics_renderer import FlowerRenderer
+from flower_cursor.layered import LayeredCompositor, LayeredRuntime
 from flower_cursor.lifecycle import CursorCell
 from flower_cursor.pose_library import PoseLibrary
-from flower_cursor.runtime import FlowerCursorRuntime
+from flower_cursor.settings import DEFAULT_MANIFEST
 
 A = CursorCell(4, 8)
 B = CursorCell(4, 20)
+# The layered artwork is authored at 256px and supersampled, so the renderer
+# reserves two canvas pixels per terminal pixel: a 5x2 cell frame at 16x33 is
+# 144x128, not the 72x64 the retired flat atlas drew.
+NATIVE = (144, 128)
+# The copies tests place one already-composed visual many times, so they need a
+# library to lay out against and never sample from it.
+_LIBRARY = PoseLibrary.from_manifest(DEFAULT_MANIFEST)
+
+
+def grown() -> tuple[LayeredRuntime, LayeredCompositor]:
+    """A part-grown flower at A, with the compositor that actually draws it.
+
+    These tests assert on the bytes Kitty receives, so the pair has to be the
+    live one rather than a stand-in; the bee is seeded so a frame never gains
+    an extra placement between runs.
+    """
+    runtime = LayeredRuntime(DEFAULT_MANIFEST, bee_rng=Random(0))
+    runtime.move_to(A)
+    runtime.update(0.35)
+    return runtime, LayeredCompositor(DEFAULT_MANIFEST)
 
 
 def commands(output: bytes) -> list[tuple[dict[str, str], bytes]]:
@@ -34,11 +56,9 @@ def transmitted_image(output: bytes) -> Image.Image:
 
 
 def test_renderer_uses_absolute_placement_and_native_pixels_at_the_root() -> None:
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     writes: list[bytes] = []
-    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
 
     renderer.render(runtime.visuals(), B, cell_size=(16, 33))
 
@@ -50,7 +70,7 @@ def test_renderer_uses_absolute_placement_and_native_pixels_at_the_root() -> Non
     root_x += runtime.pose_library.root_anchor[0] * image.width
     assert abs(root_x - A.column * 16) <= 0.5
     assert row == A.row
-    assert image.size == (72, 64)
+    assert image.size == NATIVE
     assert image.mode == "RGBA"
     assert parameters["p"] == str(runtime.visuals()[0].identifier)
     assert parameters["C"] == "1"
@@ -61,9 +81,7 @@ def test_renderer_uses_absolute_placement_and_native_pixels_at_the_root() -> Non
 
 
 def test_expanded_canvas_preserves_root_position_and_native_flower_scale() -> None:
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     old_root = runtime.pose_library.root_anchor
     expanded = PoseLibrary(
         runtime.pose_library.assets, root_anchor=(old_root[0] / 2 + 0.25, old_root[1] / 2)
@@ -93,11 +111,9 @@ def test_expanded_canvas_preserves_root_position_and_native_flower_scale() -> No
 
 
 def test_renderer_skips_unchanged_pixels_and_alternates_two_image_slots() -> None:
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     writes: list[bytes] = []
-    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
     renderer.render(runtime.visuals(), A)
     first_id = commands(b"".join(writes))[0][0]["i"]
     writes.clear()
@@ -119,13 +135,11 @@ def test_renderer_skips_unchanged_pixels_and_alternates_two_image_slots() -> Non
 
 
 def test_each_flower_owns_its_image_even_when_the_pose_is_shared() -> None:
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     visual = runtime.visuals()[0]
     other = replace(visual, identifier=visual.identifier + 1, cell=B)
     writes: list[bytes] = []
-    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
 
     renderer.render((visual, other), B)
 
@@ -137,11 +151,9 @@ def test_each_flower_owns_its_image_even_when_the_pose_is_shared() -> None:
 
 @pytest.mark.parametrize("clear", [False, True])
 def test_renderer_frees_removed_images_and_cleanup_is_idempotent(clear: bool) -> None:
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     writes: list[bytes] = []
-    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
     renderer.render(runtime.visuals(), A)
     image_id = commands(b"".join(writes))[0][0]["i"]
     writes.clear()
@@ -177,11 +189,9 @@ def test_renderer_frees_removed_images_and_cleanup_is_idempotent(clear: bool) ->
     ],
 )
 def test_screen_reset_split_across_chunks_reuploads_unchanged_frame(reset: bytes) -> None:
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     writes: list[bytes] = []
-    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
     renderer.render(runtime.visuals(), A)
     writes.clear()
 
@@ -195,12 +205,10 @@ def test_screen_reset_split_across_chunks_reuploads_unchanged_frame(reset: bytes
 
 @pytest.mark.parametrize("mode", [b"47", b"1047", b"1049", b"25;1049"])
 def test_restored_screen_cleans_its_own_retired_placements(mode: bytes) -> None:
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     visual = runtime.visuals()[0]
     writes: list[bytes] = []
-    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
     renderer.render((visual,), A)
     main_id = commands(b"".join(writes))[0][0]["i"]
     writes.clear()
@@ -226,11 +234,9 @@ def test_restored_screen_cleans_its_own_retired_placements(mode: bytes) -> None:
 
 
 def test_pending_cleanup_does_not_need_a_cursor_or_new_frame() -> None:
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     writes: list[bytes] = []
-    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
     renderer.render(runtime.visuals(), A)
     writes.clear()
     assert not renderer.observe_terminal_output(b"\x1b[2")
@@ -244,11 +250,9 @@ def test_pending_cleanup_does_not_need_a_cursor_or_new_frame() -> None:
 
 
 def test_ordinary_output_does_not_invalidate_the_frame() -> None:
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     writes: list[bytes] = []
-    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
     renderer.render(runtime.visuals(), A)
     writes.clear()
     renderer.observe_terminal_output(b"text\x1b[H\x1b[31m")
@@ -257,47 +261,45 @@ def test_ordinary_output_does_not_invalidate_the_frame() -> None:
 
 
 def test_cell_resize_reuploads_native_pixel_geometry() -> None:
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     writes: list[bytes] = []
-    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
     renderer.render(runtime.visuals(), A, cell_size=(8, 16))
-    assert transmitted_image(b"".join(writes)).size == (33, 30)
+    assert transmitted_image(b"".join(writes)).size == (66, 60)
     writes.clear()
     renderer.render(runtime.visuals(), A, cell_size=(16, 33))
-    assert transmitted_image(b"".join(writes)).size == (72, 64)
+    assert transmitted_image(b"".join(writes)).size == NATIVE
 
 
 def test_left_edge_crops_image_without_shifting_the_root() -> None:
-    runtime = FlowerCursorRuntime()
     cell = CursorCell(4, 0)
+    runtime = LayeredRuntime(DEFAULT_MANIFEST, bee_rng=Random(0))
     runtime.move_to(cell)
     runtime.update(0.35)
+    compositor = LayeredCompositor(DEFAULT_MANIFEST)
     writes: list[bytes] = []
-    renderer = FlowerRenderer(runtime.pose_library, writes.append)
+    renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
     renderer.render(runtime.visuals(), cell, cell_size=(16, 33))
 
     output = b"".join(writes)
     image = transmitted_image(output)
     parameters = commands(output)[0][0]
-    cropped = 72 - image.width
-    assert 0 < cropped < 72
-    assert abs(runtime.pose_library.root_anchor[0] * 72 - cropped) <= 0.5
+    cropped = NATIVE[0] - image.width
+    assert 0 < cropped < NATIVE[0]
+    assert abs(runtime.pose_library.root_anchor[0] * NATIVE[0] - cropped) <= 0.5
     assert int(parameters["X"]) == 0
     assert b"\x1b[4;1H" in output
 
 
 def test_two_renderers_in_one_window_do_not_share_image_ids() -> None:
     """Nested wrappers draw into the same id namespace, so bases must differ."""
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
 
     bases = set()
     for _ in range(8):
         writes: list[bytes] = []
-        FlowerRenderer(runtime.pose_library, writes.append).render(runtime.visuals(), A)
+        renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor)
+        renderer.render(runtime.visuals(), A)
         bases.add(int(commands(b"".join(writes))[0][0]["i"]))
 
     assert len(bases) == 8
@@ -307,9 +309,7 @@ def test_two_renderers_in_one_window_do_not_share_image_ids() -> None:
 
 def _copies(count: int):
     """One flower's visual stamped at many cells, as the copies path produces."""
-    runtime = FlowerCursorRuntime()
-    runtime.move_to(A)
-    runtime.update(0.35)
+    runtime, compositor = grown()
     source = runtime.visuals()[0]
     return tuple(
         replace(
@@ -324,7 +324,9 @@ def _copies(count: int):
 
 def test_copies_of_one_flower_are_transmitted_once_and_placed_many_times() -> None:
     written: list[bytes] = []
-    renderer = FlowerRenderer(PoseLibrary.default(), written.append)
+    renderer = FlowerRenderer(
+        _LIBRARY, written.append, compositor=LayeredCompositor(DEFAULT_MANIFEST)
+    )
     renderer.render(_copies(40), CursorCell(row=2, column=10))
     output = b"".join(written)
     assert output.count(b"a=t,") == 1
@@ -336,7 +338,9 @@ def test_copies_of_one_flower_are_transmitted_once_and_placed_many_times() -> No
 
 def test_a_copied_frame_replaces_itself_without_erasing_its_other_copies() -> None:
     written: list[bytes] = []
-    renderer = FlowerRenderer(PoseLibrary.default(), written.append)
+    renderer = FlowerRenderer(
+        _LIBRARY, written.append, compositor=LayeredCompositor(DEFAULT_MANIFEST)
+    )
     renderer.render(_copies(5), CursorCell(row=2, column=10))
     written.clear()
     moved = tuple(
@@ -351,7 +355,9 @@ def test_a_copied_frame_replaces_itself_without_erasing_its_other_copies() -> No
 
 def test_dropping_the_copies_frees_the_image_they_shared() -> None:
     written: list[bytes] = []
-    renderer = FlowerRenderer(PoseLibrary.default(), written.append)
+    renderer = FlowerRenderer(
+        _LIBRARY, written.append, compositor=LayeredCompositor(DEFAULT_MANIFEST)
+    )
     renderer.render(_copies(5), CursorCell(row=2, column=10))
     written.clear()
     renderer.render((), CursorCell(row=2, column=10))
@@ -364,7 +370,9 @@ def test_clearing_returns_the_shared_image_ids_for_reuse() -> None:
     Bases are drawn from a bounded span, so leaking one per clear would
     eventually wrap the allocator onto ids still in use.
     """
-    renderer = FlowerRenderer(PoseLibrary.default(), lambda data: None)
+    renderer = FlowerRenderer(
+        _LIBRARY, lambda data: None, compositor=LayeredCompositor(DEFAULT_MANIFEST)
+    )
     for _ in range(3):
         renderer.render(_copies(5), CursorCell(row=2, column=10))
         renderer.clear()

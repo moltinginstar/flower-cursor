@@ -7,7 +7,6 @@ from PIL import Image, ImageChops
 
 from flower_cursor.layered import LayeredCompositor, LayeredRuntime
 from flower_cursor.lifecycle import CursorCell, FlowerInstance
-from flower_cursor.runtime import FlowerCursorRuntime
 
 A = CursorCell(4, 8)
 B = CursorCell(4, 20)
@@ -48,9 +47,8 @@ def manifest(tmp_path: Path) -> Path:
     return path
 
 
-@pytest.mark.parametrize("layered", [False, True])
-def test_screen_reset_drops_flowers_without_reusing_identifiers(manifest, layered):
-    runtime = LayeredRuntime(manifest) if layered else FlowerCursorRuntime()
+def test_screen_reset_drops_flowers_without_reusing_identifiers(manifest):
+    runtime = LayeredRuntime(manifest)
     runtime.move_to(A)
     runtime.update(0.3)
     runtime.move_to(B)

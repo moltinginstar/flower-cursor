@@ -10,7 +10,7 @@ from collections.abc import Callable
 
 from PIL import Image
 
-from .compositor import FlowerCompositor, FrameCompositor
+from .compositor import FrameCompositor
 from .geometry import FlowerLayout, ViewportGeometry, viewport_crop
 from .kitty_graphics import MAX_IMAGE_ID, delete_image, delete_placement, place_image, transmit_png
 from .layered import BeeVisual
@@ -55,13 +55,16 @@ class FlowerRenderer:
         self._buffers = {False: self._placements, True: {}}
         self._alternate = False
         self._invalidated: set[bool] = set()
-        self._compositor = compositor if compositor is not None else FlowerCompositor()
+        self._compositor = compositor
         # Supersampling belongs to whoever draws the pixels: a compositor that
         # renders at twice the cells' own resolution is the only part that
         # knows so. An explicit scale still wins, for a caller laying out a
-        # frame it will resize itself.
+        # frame it will resize itself - which is the one case where a renderer
+        # is built with no compositor at all, to read `layout` and nothing else.
         if canvas_scale is None:
-            canvas_scale = self._compositor.canvas_scale
+            if compositor is None:
+                raise ValueError("a renderer without a compositor needs an explicit canvas_scale")
+            canvas_scale = compositor.canvas_scale
         if canvas_scale < 1:
             raise ValueError("canvas scale must be positive")
         self.layout = FlowerLayout(
@@ -121,6 +124,8 @@ class FlowerRenderer:
         *,
         viewport: ViewportGeometry | None = None,
     ) -> None:
+        if self._compositor is None:
+            raise ValueError("this renderer was built for layout only and cannot draw")
         self.flush_pending()
         if viewport is not None:
             cell_size = viewport.cell_size
@@ -281,7 +286,8 @@ class FlowerRenderer:
             self._release_image_base(("shared", appearance))
         self._shared.clear()
         self._placements.clear()
-        self._compositor.retain(set())
+        if self._compositor is not None:
+            self._compositor.retain(set())
 
     @property
     def _shared_ids(self) -> set[int]:
