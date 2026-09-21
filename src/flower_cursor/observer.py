@@ -22,6 +22,10 @@ from .output_arbiter import OutputArbiter
 from .pty_runner import run
 
 DEFAULT_MANIFEST = Path(__file__).with_name("assets") / "layered" / "manifest.json"
+FLOWER_MANIFESTS = {
+    "coral": DEFAULT_MANIFEST,
+    "cornflower": DEFAULT_MANIFEST.parent.parent / "cornflower" / "manifest.json",
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,7 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=1 / 60,
         help="seconds between independent animation/render ticks",
     )
-    parser.add_argument(
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--flower", choices=tuple(FLOWER_MANIFESTS), help="select a bundled flower species"
+    )
+    selection.add_argument(
         "--shedding-manifest", type=Path, help="override the bundled layered flower assets"
     )
     parser.add_argument(
@@ -73,7 +81,11 @@ def main(argv: list[str] | None = None) -> int:
     log_file = args.log.open("w") if args.log is not None else None
     previous: CursorCell | None = None
     current_cell: CursorCell | None = None
-    manifest = args.shedding_manifest or (DEFAULT_MANIFEST if args.render else None)
+    manifest = (
+        args.shedding_manifest
+        or (FLOWER_MANIFESTS[args.flower] if args.flower is not None else None)
+        or (DEFAULT_MANIFEST if args.render else None)
+    )
     if manifest is not None:
         # Configured as Kitty's `shell`, this wrapper is the only thing between
         # the user and a usable window, so a broken install has to hand the
@@ -81,8 +93,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             from .layered import LayeredCompositor, LayeredRuntime
 
-            runtime = LayeredRuntime(manifest)
-            compositor = LayeredCompositor(manifest)
+            selected_species = {"species": args.flower} if args.flower is not None else {}
+            runtime = LayeredRuntime(manifest, **selected_species)
+            compositor = LayeredCompositor(manifest, **selected_species)
             flowers = MultiCursorFlowers(manifest, independent_limit=args.independent_cursors)
         except Exception:
             if args.kitty_shell:

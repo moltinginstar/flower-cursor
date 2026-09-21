@@ -44,11 +44,25 @@ def petal_displacement(
 
 
 class SheddingFlower:
-    def __init__(self, flower: FlowerInstance, *, wall_time_idle: bool = False) -> None:
+    def __init__(
+        self,
+        flower: FlowerInstance,
+        *,
+        wall_time_idle: bool = False,
+        group_count: int = 6,
+        shedding_order: tuple[int, ...] | None = None,
+    ) -> None:
+        if group_count < 1:
+            raise ValueError("group_count must be positive")
+        if shedding_order is None:
+            shedding_order = _SHED_ORDER if group_count == 6 else tuple(range(group_count))
+        if tuple(sorted(shedding_order)) != tuple(range(group_count)):
+            raise ValueError("shedding_order must be a permutation of all groups")
         self.flower = flower
         self._wall_time_idle = wall_time_idle
         self._idle_time = 0.0
-        self.petals = tuple(_Spring(1.0, response=9.0) for _ in _SHED_ORDER)
+        self.shedding_order = shedding_order
+        self.petals = tuple(_Spring(1.0, response=9.0) for _ in range(group_count))
         self.flights: list[PetalFlight] = []
         self.head = _Spring(1.0, response=18.0)
         self._opening = _Spring(flower.pose.petal_open, response=12.0)
@@ -115,7 +129,7 @@ class SheddingFlower:
                 for petal in self.petals:
                     petal.step(petal.value, dt)
                 self._exit_age += dt
-                for order, index in enumerate(_SHED_ORDER):
+                for order, index in enumerate(self.shedding_order):
                     if index in self._shed or self._exit_age < 0.12 + order * 0.05:
                         continue
                     self._shed.add(index)

@@ -18,6 +18,7 @@ from .lifecycle import CursorCell, FlowerInstance
 from .pose_library import PoseLibrary
 from .runtime import DEFAULT_ANIMATION_SPEED, FlowerVisual
 from .shedding import SheddingFlower, petal_decay, petal_displacement
+from .species import metadata_from_manifest
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -31,7 +32,15 @@ class BeeVisual(FlowerVisual):
 
 
 class LayeredRuntime:
-    def __init__(self, manifest: Path, *, bee_rng: random.Random | None = None) -> None:
+    def __init__(
+        self,
+        manifest: Path,
+        *,
+        bee_rng: random.Random | None = None,
+        species: str | None = None,
+    ) -> None:
+        data = json.loads(manifest.read_text())
+        self.metadata = metadata_from_manifest(data, selected_species=species)
         self.pose_library = PoseLibrary.from_manifest(manifest)
         self.flowers: list[SheddingFlower] = []
         self.active: SheddingFlower | None = None
@@ -39,7 +48,7 @@ class LayeredRuntime:
         self.bee = IdleBee(bee_rng)
         self._bee_identifier = 0
         self._bee_flower: SheddingFlower | None = None
-        self._heads = {p["name"]: p["head"] for p in json.loads(manifest.read_text())["poses"]}
+        self._heads = {p["name"]: p["head"] for p in data["poses"]}
         self._viewport: ViewportGeometry | None = None
         self._layout = FlowerLayout(self.pose_library.root_anchor)
 
@@ -50,6 +59,13 @@ class LayeredRuntime:
         self.bee.set_geometry(
             viewport, (max(1, round(width * 0.20 * 1.75)), max(1, round(height * 0.20 * 1.75)))
         )
+        support = self.metadata.landing_support_bounds
+        if viewport is None or support is None:
+            self.bee.set_landing_support_bounds(None)
+        else:
+            x_bounds = (support[0][0] * width, support[0][1] * width)
+            y_bounds = (support[1][0] * height, support[1][1] * height)
+            self.bee.set_landing_support_bounds((x_bounds, y_bounds))
 
     def move_to(self, cell: CursorCell) -> None:
         if self.active is not None and self.active.flower.cell == cell:
@@ -62,7 +78,10 @@ class LayeredRuntime:
         )
         if returning is None:
             returning = SheddingFlower(
-                FlowerInstance.bud(self._next_identifier, cell), wall_time_idle=True
+                FlowerInstance.bud(self._next_identifier, cell),
+                wall_time_idle=True,
+                group_count=len(self.metadata.shedding_groups),
+                shedding_order=self.metadata.shedding_order,
             )
             self._next_identifier += 1
             self.flowers.append(returning)
@@ -129,9 +148,10 @@ class LayeredRuntime:
 
 
 class LayeredCompositor:
-    def __init__(self, manifest: Path, size: int = 256) -> None:
-        self.library = PoseLibrary.from_manifest(manifest)
+    def __init__(self, manifest: Path, size: int = 256, *, species: str | None = None) -> None:
         data = json.loads(manifest.read_text())
+        self.metadata = metadata_from_manifest(data, selected_species=species)
+        self.library = PoseLibrary.from_manifest(manifest)
         self.records = {p["name"]: p for p in data["poses"]}
         self.directory = manifest.parent
         self.right = data["projection_right"]
@@ -200,7 +220,7 @@ class LayeredCompositor:
     def _capture(self, flight):
         samples = self.library.sample_animated(flight.pose)
         previous = self.library.sample_animated(flight.previous_pose)
-        layer = f"petal_{flight.index}"
+        layer = self.metadata.shedding_groups[flight.index].layer
         image = self._scale(
             self._blend(samples, layer), self._vector(samples, "head"), flight.growth
         )
@@ -267,7 +287,10 @@ class LayeredCompositor:
             canvas.alpha_composite(self._blend(samples, "body").convert("RGBA"))
             head = self._vector(samples, "head")
             layers = [("head", flower.head.value)]
-            layers.extend((f"petal_{i}", p.value) for i, p in enumerate(flower.petals))
+            layers.extend(
+                (group.layer, petal.value)
+                for group, petal in zip(self.metadata.shedding_groups, flower.petals)
+            )
             layers.sort(
                 key=lambda item: sum(
                     self.records[a.name]["depths"][item[0]] * w for a, w in samples

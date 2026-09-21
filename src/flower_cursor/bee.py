@@ -103,6 +103,7 @@ class IdleBee:
         self.rest_time = REST_TIME
         self.departure_time = DEPARTURE_TIME
         self.landing_offset = (0.0, 0.0)
+        self._landing_support_bounds: tuple[tuple[float, float], tuple[float, float]] | None = None
         self._source = (0, 0.5)
         self._exit: tuple[int, float] | None = None
         self._bend = 0.0
@@ -157,6 +158,17 @@ class IdleBee:
             self.head[0] + self.landing_offset[0] + (0.5 - REST_CONTACT[0]) * self.size[0],
             self.head[1] + self.landing_offset[1] + (0.5 - REST_CONTACT[1]) * self.size[1],
         )
+
+    @property
+    def landing_support_bounds(
+        self,
+    ) -> tuple[tuple[float, float], tuple[float, float]] | None:
+        return self._landing_support_bounds
+
+    def set_landing_support_bounds(
+        self, bounds: tuple[tuple[float, float], tuple[float, float]] | None
+    ) -> None:
+        self._landing_support_bounds = bounds
 
     def set_geometry(self, viewport: ViewportGeometry | None, size: tuple[int, int]) -> None:
         if viewport is None and self.visible:
@@ -296,10 +308,16 @@ class IdleBee:
         self._hover_offset = (self.rng.uniform(18, 26), self.rng.uniform(-28, -20))
         angle = self.rng.uniform(-math.pi, math.pi)
         distance = math.sqrt(self.rng.random())
-        self.landing_offset = (
+        offset = (
             math.cos(angle) * distance * self.size[0] / 50,
             math.sin(angle) * distance * 0.4 * self.size[1] / 45,
         )
+        if self._landing_support_bounds is not None:
+            offset = tuple(
+                max(lower, min(upper, value))
+                for value, (lower, upper) in zip(offset, self._landing_support_bounds)
+            )
+        self.landing_offset = offset
 
     def _edge_point(self, edge: tuple[int, float]) -> tuple[float, float]:
         viewport = self.viewport
