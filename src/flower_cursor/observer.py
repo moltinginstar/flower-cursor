@@ -11,8 +11,10 @@ import termios
 import time
 from pathlib import Path
 
+from .cwd_follower import CwdFollower
 from .geometry import ViewportGeometry
 from .graphics_renderer import FlowerRenderer
+from .kitty_shell import exec_fallback, shell_command
 from .lifecycle import CursorCell
 from .multi_cursor import MultiCursorReplyFilter, MultiCursorTracker
 from .multi_runtime import DEFAULT_INDEPENDENT_LIMIT, MultiCursorFlowers
@@ -51,6 +53,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_INDEPENDENT_LIMIT,
         help="how many declared cursors get their own flower before copies are used",
     )
+    parser.add_argument(
+        "--kitty-shell",
+        action="store_true",
+        help="start the user's login shell with Kitty's shell integration nested inside",
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
 
@@ -61,18 +68,26 @@ def main(argv: list[str] | None = None) -> int:
     if command[:1] == ["--"]:
         command = command[1:]
     if not command:
-        command = [os.environ.get("SHELL", "sh")]
+        command = shell_command() if args.kitty_shell else [os.environ.get("SHELL", "sh")]
 
     log_file = args.log.open("w") if args.log is not None else None
     previous: CursorCell | None = None
     current_cell: CursorCell | None = None
     manifest = args.shedding_manifest or (DEFAULT_MANIFEST if args.render else None)
     if manifest is not None:
-        from .layered import LayeredCompositor, LayeredRuntime
+        # Configured as Kitty's `shell`, this wrapper is the only thing between
+        # the user and a usable window, so a broken install has to hand the
+        # shell over rather than leave an empty one behind.
+        try:
+            from .layered import LayeredCompositor, LayeredRuntime
 
-        runtime = LayeredRuntime(manifest)
-        compositor = LayeredCompositor(manifest)
-        flowers = MultiCursorFlowers(manifest, independent_limit=args.independent_cursors)
+            runtime = LayeredRuntime(manifest)
+            compositor = LayeredCompositor(manifest)
+            flowers = MultiCursorFlowers(manifest, independent_limit=args.independent_cursors)
+        except Exception:
+            if args.kitty_shell:
+                exec_fallback(list(command))
+            raise
     else:
         runtime = None
         compositor = None
@@ -114,8 +129,18 @@ def main(argv: list[str] | None = None) -> int:
             log_file.write(f"{time.time():.6f} {cell.row} {cell.column}\n")
             log_file.flush()
 
+    cwd_follower = CwdFollower()
+
     def on_output(data: bytes) -> bool:
         nonlocal current_cell, previous
+        reported = cwd_follower.feed(data)
+        if reported is not None:
+            # Kitty reads the foreground process's directory when it cannot
+            # trust the cursor position, and that process is us.
+            try:
+                os.chdir(reported)
+            except OSError:
+                pass
         if renderer is not None and renderer.observe_terminal_output(data):
             current_cell = previous = None
             if runtime is not None:

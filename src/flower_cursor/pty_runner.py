@@ -83,7 +83,14 @@ def run(
 
     child_pid, master_fd = pty.fork()
     if child_pid == 0:
-        os.execvp(command[0], list(command))
+        # A failed exec must not fall through into the parent's loop, which is
+        # what a bare execvp would do: the forked child would go on to render
+        # flowers at a terminal it does not own.
+        try:
+            os.execvp(command[0], list(command))
+        except OSError as error:
+            print(f"flower-cursor: cannot run {command[0]}: {error}", file=sys.stderr)
+        os._exit(127)
 
     parser = CursorReportParser()
     output_arbiter = output_arbiter or OutputArbiter(lambda data: _write_all(stdout_fd, data))

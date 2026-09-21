@@ -1,12 +1,68 @@
 #!/bin/sh
-set -eu
+# Kitty `shell` launcher: start the user's own shell under the flower cursor.
+#
+# Every new Kitty window runs this, so it fails open. If the wrapper cannot be
+# started for any reason - a missing interpreter, a half-finished checkout, a
+# broken install - the window still comes up with the user's real shell in it,
+# with Kitty's shell integration nested the same way the wrapper nests it.
+set -u
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-if [ -x "$ROOT/.venv/bin/python" ]; then
-    PYTHON="$ROOT/.venv/bin/python"
-else
-    PYTHON=python3
+real_shell() {
+    case "${SHELL##*/}" in
+        ''|flower-cursor|flower-cursor-shell) echo "/bin/sh" ;;
+        *) echo "$SHELL" ;;
+    esac
+}
+
+kitten_exe() {
+    if [ -n "${KITTY_INSTALLATION_DIR-}" ]; then
+        for candidate in \
+            "$KITTY_INSTALLATION_DIR/../../MacOS/kitten" \
+            "$KITTY_INSTALLATION_DIR/../../bin/kitten" \
+            "$KITTY_INSTALLATION_DIR/../bin/kitten"; do
+            [ -x "$candidate" ] && { echo "$candidate"; return 0; }
+        done
+    fi
+    command -v kitten 2>/dev/null
+}
+
+# Hand the window straight to the shell, integration and all. This is both the
+# documented off switch and the recovery path.
+plain_shell() {
+    shell=$(real_shell)
+    kitten=$(kitten_exe)
+    if [ -n "$kitten" ]; then
+        exec "$kitten" run-shell --shell "$shell"
+    fi
+    exec "$shell" -l -i
+}
+
+# Kitty opens a window by running this with no arguments. Anything else is
+# Kitty using the `shell` option as a shell - `env read_from_shell` runs
+# `<shell> -l -i -c 'command env -0'` to collect variables - and has to be
+# answered by the real shell, not by a flower session that never returns.
+#
+# Kitty gives that read 1.5 seconds total, and a login+interactive zsh with a
+# framework in it can take most of that on a cold start, so this branch comes
+# before any other work in the script and forks nothing on the way.
+if [ "$#" -gt 0 ]; then
+    case "${SHELL##*/}" in
+        ''|flower-cursor|flower-cursor-shell) exec /bin/sh "$@" ;;
+        *) exec "$SHELL" "$@" ;;
+    esac
 fi
 
-export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
-exec "$PYTHON" -m flower_cursor.observer --render -- "${SHELL:-sh}" "$@"
+[ "${FLOWER_CURSOR_DISABLE-0}" = "0" ] || plain_shell
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+if [ -x "$ROOT/.venv/bin/flower-cursor" ]; then
+    exec "$ROOT/.venv/bin/flower-cursor" --kitty-shell
+elif [ -x "$ROOT/.venv/bin/python" ]; then
+    PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" \
+        exec "$ROOT/.venv/bin/python" -m flower_cursor.observer --render --kitty-shell
+elif command -v flower-cursor >/dev/null 2>&1; then
+    exec flower-cursor --kitty-shell
+fi
+
+plain_shell
