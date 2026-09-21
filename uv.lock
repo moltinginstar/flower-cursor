@@ -85,6 +85,7 @@ sound = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "miniaudio" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -98,6 +99,7 @@ provides-extras = ["sound"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "miniaudio", specifier = ">=1.71" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "ruff", specifier = ">=0.11" },
 ]

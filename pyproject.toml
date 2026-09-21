@@ -27,6 +27,14 @@ packages = ["src/flower_cursor"]
 dev = [
     "pytest>=8.3",
     "ruff>=0.11",
+    # The same backend the `sound` extra installs, repeated because `uv run`
+    # re-syncs the environment to the default set and uninstalls anything an
+    # earlier `uv sync --extra sound` put there - so a checkout that wants to
+    # hear the bee loses the audio device on the next test run. uv has no way
+    # for a group to pull in an extra, so this is the documented shape. It says
+    # nothing about how the package installs: `pip install flower-cursor` is
+    # still audio-free, and `flower-cursor[sound]` is still how a user asks.
+    "miniaudio>=1.71",
 ]
 
 [tool.pytest.ini_options]
