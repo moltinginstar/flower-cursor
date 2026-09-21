@@ -95,6 +95,33 @@ class LayeredRuntime:
         self.bee.reset()
         self._bee_flower = None
 
+    @property
+    def animating(self) -> bool:
+        """Whether anything is still on screen and moving."""
+        return bool(self.flowers) or self.bee.visible
+
+    def begin_withering(self) -> None:
+        """Send every flower away the way moving the caret off a cell does.
+
+        Nothing replaces them: the caret is gone rather than moved, so the
+        flowers wither, `update` empties the list as each one finishes, and the
+        pane is left with nothing to draw. The bee flies off the way it does
+        when the caret moves out from under it, which takes longer than the
+        withering does - `animating` covers both, so the pane keeps drawing
+        until the last of it has gone.
+        """
+        for flower in self.flowers:
+            flower.begin_withering()
+        # `move_to` returns early when the active flower already owns the cell,
+        # so leaving a finished flower active would stop the pane ever
+        # sprouting again once it is focused back.
+        self.active = None
+        # `_bee_flower` is what keeps the bee drawn, and only the bee's own
+        # image is composited from it, so the flower it was visiting can go on
+        # withering underneath while the bee leaves. `update` clears it once
+        # the bee is off the screen.
+        self.bee.leave()
+
     def update(self, duration: float) -> None:
         if not math.isfinite(duration) or duration < 0:
             raise ValueError("duration must be finite and non-negative")

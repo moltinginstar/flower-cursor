@@ -378,3 +378,86 @@ raise SystemExit(run([sys.executable, '-c', {script!r}], query_interval=0.05))
         os.close(master_fd)
 
     assert b"(24, 80, 640, 384)" in output, bytes(output[-300:])
+
+
+def test_unfocused_window_ticks_until_its_flowers_have_gone_then_stops() -> None:
+    # The wrapper does not know what "gone" means; it asks, and the answer here
+    # is a fixed number of frames standing in for the wither.
+    leaving_frames = 5
+    child_code = "import time; time.sleep(1.0)"
+    runner_code = f"""
+import sys
+from flower_cursor.focus import FocusFilter
+from flower_cursor.pty_runner import run
+
+state = {{'focused': True, 'left': {leaving_frames}}}
+
+def on_focus(focused):
+    state['focused'] = focused
+    print('FOCUS', focused, file=sys.stderr, flush=True)
+
+def wants_tick():
+    return not state['focused'] and state['left'] > 0
+
+def on_tick(_duration):
+    if not state['focused'] and state['left'] > 0:
+        state['left'] -= 1
+        print('LEAVING', file=sys.stderr, flush=True)
+
+raise SystemExit(run(
+    [sys.executable, '-c', {child_code!r}],
+    on_tick=on_tick,
+    focus_filter=FocusFilter(),
+    on_focus=on_focus,
+    wants_tick=wants_tick,
+    query_interval=0.01,
+    tick_interval=0.01,
+))
+"""
+    master_fd, slave_fd = pty.openpty()
+    process = subprocess.Popen(
+        [sys.executable, "-c", runner_code],
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=subprocess.PIPE,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+    os.set_blocking(master_fd, False)
+    output = bytearray()
+    queries_seen = 0
+    queries_at_focus_out = None
+    deadline = time.monotonic() + 5
+    try:
+        while time.monotonic() < deadline:
+            readable, _, _ = select.select([master_fd], [], [], 0.02)
+            if readable:
+                try:
+                    data = os.read(master_fd, 65536)
+                except OSError:
+                    break
+                if not data:
+                    break
+                output.extend(data)
+                queries = output.count(_OUR_QUERY)
+                for _ in range(queries - queries_seen):
+                    os.write(master_fd, b"\x1b[?1;1R")
+                queries_seen = queries
+            if queries_at_focus_out is None and queries_seen >= 3:
+                os.write(master_fd, b"\x1b[O")
+                queries_at_focus_out = queries_seen
+            if process.poll() is not None:
+                break
+        returncode = process.wait(timeout=5)
+        stderr = process.stderr.read() if process.stderr is not None else b""
+    finally:
+        os.close(master_fd)
+
+    assert returncode == 0, stderr
+    assert b"FOCUS False" in stderr
+    # Exactly the frames it asked for: the wither plays out in full, and then
+    # the window goes idle instead of drawing another second of nothing.
+    assert stderr.count(b"LEAVING") == leaving_frames, stderr
+    # A caret that is not drawn is not worth asking about, so the polling stops
+    # at once rather than lasting as long as the animation does.
+    assert queries_seen - queries_at_focus_out <= 3, (queries_seen, queries_at_focus_out)

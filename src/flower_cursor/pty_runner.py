@@ -18,14 +18,18 @@ from collections.abc import Callable, Sequence
 
 from .cursor_report import CursorReportParser
 from .cursor_visibility import CURSOR_HIDE, CURSOR_SHOW, CursorVisibilityFilter
+from .focus import FOCUS_DISABLE, FOCUS_ENABLE, FocusFilter
 from .lifecycle import CursorCell
 from .output_arbiter import OutputArbiter
-from .vt_framer import DeviceStatusQuery, Event
+from .vt_framer import AltScreenChange, DeviceStatusQuery, Event, FocusReporting
 
 # DECXCPR. Kitty answers it with a `?`-marked reply, which keeps our polling
 # apart from an application's own DSR conversation instead of stealing it.
 _CPR_QUERY = b"\x1b[?6n"
 _CPR_PARAMETER = 6
+# How long a partial escape sequence is held while it could still turn out to be
+# a focus report. Short enough not to be felt on a lone Escape key.
+_FOCUS_HOLD = 0.02
 # struct winsize: ws_row, ws_col, ws_xpixel, ws_ypixel
 _WINSIZE_ZERO = struct.pack("HHHH", 0, 0, 0, 0)
 
@@ -64,11 +68,21 @@ def run(
     on_output: Callable[[bytes], bool | None] | None = None,
     output_arbiter: OutputArbiter | None = None,
     stdin_filter: Callable[[bytes], bytes] | None = None,
+    focus_filter: FocusFilter | None = None,
+    on_focus: Callable[[bool], None] | None = None,
+    wants_tick: Callable[[], bool] | None = None,
     query_interval: float = 1 / 30,
     tick_interval: float = 1 / 60,
     hide_cursor: bool = False,
 ) -> int:
-    """Run *command* behind a PTY and report Kitty cursor cells to a callback."""
+    """Run *command* behind a PTY and report Kitty cursor cells to a callback.
+
+    With a *focus_filter*, an unfocused window stops polling for the caret
+    immediately - Kitty does not draw one in an inactive split - but keeps
+    ticking while *wants_tick* says something is still on its way off the
+    screen, so what was drawn can leave the way it is meant to before the
+    window falls idle.
+    """
     if not command:
         raise ValueError("command must not be empty")
     if query_interval <= 0:
@@ -103,6 +117,7 @@ def run(
     next_query = now
     next_tick = now
     last_tick = now
+    focus_hold: float | None = None
     resize_handler = signal.getsignal(signal.SIGWINCH)
 
     def request_resize(_signum: int, _frame: object) -> None:
@@ -115,22 +130,42 @@ def run(
         if isinstance(event, DeviceStatusQuery):
             if event.private and event.parameter == _CPR_PARAMETER:
                 cursor_queries.append(None)
+        elif focus_filter is not None:
+            # The child owns the mode for itself; Kitty has to keep reporting to
+            # us either way, so re-assert it. An alternate-screen switch can
+            # carry a `?1004l` in the same sequence, so it re-asserts too.
+            if isinstance(event, FocusReporting):
+                focus_filter.child_wants_reports = event.enabled
+                pending_focus_reassert.append(FOCUS_ENABLE)
+            elif isinstance(event, AltScreenChange):
+                pending_focus_reassert.append(FOCUS_ENABLE)
 
+    pending_focus_reassert: deque[bytes] = deque()
     output_arbiter.add_listener(on_child_sequence)
     signal.signal(signal.SIGWINCH, request_resize)
     try:
         tty.setraw(stdin_fd, termios.TCSAFLUSH)
         if cursor_visibility is not None:
             output_arbiter.write(CURSOR_HIDE)
+        if focus_filter is not None:
+            output_arbiter.write(FOCUS_ENABLE)
         _sync_window_size(master_fd, stdin_fd)
         selector.register(stdin_fd, selectors.EVENT_READ, "stdin")
         selector.register(master_fd, selectors.EVENT_READ, "master")
         while True:
             now = time.monotonic()
+            focused = focus_filter is None or focus_filter.focused
+            animating = focused or (wants_tick is not None and wants_tick())
             if output_arbiter.can_write:
-                deadlines = [next_query]
-                if on_tick is not None:
+                # The caret is only worth asking about while it is drawn, but
+                # the frame timer outlives focus by however long the flowers
+                # take to go; once they have, there is no timer at all and the
+                # loop sleeps until the child or the user says otherwise.
+                deadlines = [next_query] if focused else []
+                if on_tick is not None and animating:
                     deadlines.append(next_tick)
+                if focus_hold is not None:
+                    deadlines.append(focus_hold)
             else:
                 recovery_deadline = output_arbiter.recovery_deadline
                 deadlines = [recovery_deadline] if recovery_deadline is not None else []
@@ -143,6 +178,23 @@ def run(
                         _terminate_child(child_pid)
                         _, status = os.waitpid(child_pid, 0)
                         return os.waitstatus_to_exitcode(status)
+                    if focus_filter is not None:
+                        data, focus_changed = focus_filter.feed(data)
+                        if focus_changed:
+                            if focus_filter.focused:
+                                # Time did not pass for the animation while it
+                                # was not being drawn; resume from now instead
+                                # of replaying the gap in one step.
+                                now = time.monotonic()
+                                last_tick = next_tick = now
+                                next_query = now
+                            if on_focus is not None:
+                                on_focus(focus_filter.focused)
+                        focus_hold = (
+                            time.monotonic() + _FOCUS_HOLD if focus_filter.has_pending else None
+                        )
+                        if not data:
+                            continue
                     passthrough, reports = parser.feed(data)
                     if stdin_filter is not None:
                         passthrough = stdin_filter(passthrough)
@@ -177,12 +229,30 @@ def run(
                 resize_pending = False
             now = time.monotonic()
             output_arbiter.poll(now)
+            if focus_filter is not None:
+                # A held partial is released once it is clear no more of it is
+                # coming, so a lone Escape reaches the child a frame later
+                # rather than waiting on a keystroke that may never arrive.
+                if focus_hold is not None and now >= focus_hold:
+                    held = focus_filter.flush()
+                    focus_hold = None
+                    if held:
+                        _write_all(master_fd, held)
+                while pending_focus_reassert and output_arbiter.can_write:
+                    output_arbiter.write(pending_focus_reassert.popleft())
+            focused = focus_filter is None or focus_filter.focused
+            animating = focused or (wants_tick is not None and wants_tick())
+            if not animating:
+                waited_pid, status = os.waitpid(child_pid, os.WNOHANG)
+                if waited_pid == child_pid:
+                    return os.waitstatus_to_exitcode(status)
+                continue
             if on_tick is not None and now >= next_tick and output_arbiter.can_write:
                 on_tick(now - last_tick)
                 last_tick = now
                 missed_ticks = max(1, math.ceil((now - next_tick) / tick_interval))
                 next_tick += missed_ticks * tick_interval
-            if now >= next_query and output_arbiter.can_write:
+            if focused and now >= next_query and output_arbiter.can_write:
                 if len(cursor_queries) < 256:
                     output_arbiter.write(_CPR_QUERY)
                     cursor_queries.append(cursor_generation)
@@ -207,6 +277,8 @@ def run(
         finally:
             if cursor_visibility is not None:
                 output_arbiter.write(CURSOR_SHOW)
+            if focus_filter is not None:
+                output_arbiter.write(FOCUS_DISABLE)
         selector.close()
         os.close(master_fd)
         signal.signal(signal.SIGWINCH, resize_handler)

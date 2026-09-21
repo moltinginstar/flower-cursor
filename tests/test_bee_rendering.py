@@ -456,6 +456,9 @@ def test_primary_only_bee_survives_independent_copies_transitions_with_unique_id
     bee_id = None
     for cells in (cells, (*cells, CursorCell(8, 50)), cells, (), (*cells, CursorCell(8, 50))):
         extras.update(cells, 0)
+        # A transition leaves the flowers it dropped withering on screen; this
+        # test counts what is settled, so let them finish going first.
+        extras.advance(1.5)
         for secondary in extras._runtimes:
             secondary.set_geometry(VIEWPORT, renderer.layout)
             advance(secondary, 15)

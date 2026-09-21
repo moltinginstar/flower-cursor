@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from .cwd_follower import CwdFollower
+from .focus import FocusFilter
 from .geometry import ViewportGeometry
 from .graphics_renderer import FlowerRenderer
 from .kitty_shell import exec_fallback, shell_command
@@ -79,6 +80,9 @@ def main(argv: list[str] | None = None) -> int:
         command = shell_command() if args.kitty_shell else [os.environ.get("SHELL", "sh")]
 
     log_file = args.log.open("w") if args.log is not None else None
+    # Kitty only reports focus once it changes, and a window is focused when it
+    # opens, so that is where this starts.
+    focused = True
     previous: CursorCell | None = None
     current_cell: CursorCell | None = None
     manifest = (
@@ -133,7 +137,9 @@ def main(argv: list[str] | None = None) -> int:
         nonlocal current_cell, previous
         current_cell = cell
         tracker.main_cursor = cell
-        if runtime is not None:
+        # A reply still in flight when focus was lost must not call the
+        # withering flower back to the caret.
+        if runtime is not None and focused:
             runtime.move_to(cell)
         if cell == previous:
             return
@@ -180,11 +186,38 @@ def main(argv: list[str] | None = None) -> int:
             runtime.update(duration)
             visuals = runtime.visuals()
             if flowers is not None:
-                flowers.update(tracker.cells, duration)
+                if focused:
+                    flowers.update(tracker.cells, duration)
+                else:
+                    # Nothing is paired to a cursor any more, so the flowers
+                    # left behind only have to finish leaving.
+                    flowers.advance(duration)
                 stamp = runtime.active.flower.identifier if runtime.active is not None else None
                 visuals = flowers.visuals(visuals, stamp)
             renderer.render(visuals, current_cell, duration, viewport=viewport)
             output.flush()
+
+    focus_filter = FocusFilter() if renderer is not None else None
+
+    def on_focus(is_focused: bool) -> None:
+        nonlocal focused
+        focused = is_focused
+        # Kitty draws no caret in an inactive split, so neither do we. The
+        # flowers leave the only way flowers ever leave - they wither - and the
+        # pane keeps drawing until they have, then goes idle. Coming back needs
+        # nothing: with the old flowers gone, the next cursor report buds a new
+        # one and it grows in.
+        if is_focused or runtime is None:
+            return
+        runtime.begin_withering()
+        if flowers is not None:
+            flowers.begin_withering()
+
+    def wants_tick() -> bool:
+        """Whether an unfocused window still has something left to draw."""
+        if runtime is None:
+            return False
+        return runtime.animating or (flowers is not None and flowers.animating)
 
     def close_graphics() -> None:
         if renderer is not None:
@@ -200,6 +233,9 @@ def main(argv: list[str] | None = None) -> int:
             on_output=on_output if renderer is not None else None,
             output_arbiter=output_arbiter,
             stdin_filter=reply_filter.feed,
+            focus_filter=focus_filter,
+            on_focus=on_focus if renderer is not None else None,
+            wants_tick=wants_tick if renderer is not None else None,
             query_interval=args.interval,
             tick_interval=args.render_interval,
             hide_cursor=renderer is not None,

@@ -47,6 +47,13 @@ class AltScreenChange:
 
 
 @dataclass(frozen=True, slots=True)
+class FocusReporting:
+    """The child turned Kitty's focus reporting (mode 1004) on or off."""
+
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
 class DeviceStatusQuery:
     """The child asked the terminal for a status report."""
 
@@ -72,9 +79,10 @@ class MultipleCursors:
     parameters: bytes
 
 
-Event = AltScreenChange | DeviceStatusQuery | MultipleCursors | ScreenErased
+Event = AltScreenChange | DeviceStatusQuery | FocusReporting | MultipleCursors | ScreenErased
 
 _ALT_SCREEN_MODES = {47, 1047, 1049}
+_FOCUS_REPORTING_MODE = 1004
 # ED parameters that clear a screen region large enough for Kitty to drop the
 # extra cursors: the whole screen, the scrollback, and both together.
 _ERASING_ED_PARAMETERS = {2, 3, 22}
@@ -276,9 +284,16 @@ class VTFramer:
         self._enter_ground()
 
         if final in (0x68, 0x6C) and private == 0x3F:  # h / l with ?
-            for value in _numeric_parameters(parameters):
+            values = _numeric_parameters(parameters)
+            # One sequence can carry several modes and only one event can be
+            # reported, so the screen switch wins: it decides whether anything
+            # is drawn at all. Focus reporting is re-asserted on that event too,
+            # which is what a bundled `?1004;1049l` would otherwise cost us.
+            for value in values:
                 if value in _ALT_SCREEN_MODES:
                     return AltScreenChange(active=final == 0x68)
+            if _FOCUS_REPORTING_MODE in values:
+                return FocusReporting(enabled=final == 0x68)
             return None
         if final == 0x6E and not intermediates:  # n
             values = _numeric_parameters(parameters)

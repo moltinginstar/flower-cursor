@@ -25,6 +25,9 @@ DEFAULT_INDEPENDENT_LIMIT = 12
 # over a few ticks rather than stalling one of them.
 _BUILDS_PER_TICK = 2
 _COPIES = -1
+# Retiring runtimes keep drawing while they wither, so they need slots of their
+# own that no live runtime can collide with.
+_FIRST_RETIRED_SLOT = -2
 
 
 class _NoBee(IdleBee):
@@ -50,6 +53,8 @@ class MultiCursorFlowers:
         self._limit = independent_limit
         self._build = build
         self._runtimes: list[LayeredRuntime] = []
+        self._retiring: dict[int, LayeredRuntime] = {}
+        self._retired_slot = _FIRST_RETIRED_SLOT
         self._cells: tuple[CursorCell, ...] = ()
         self._identifiers: dict[tuple[int, int], int] = {}
         self._released: list[int] = []
@@ -61,17 +66,45 @@ class MultiCursorFlowers:
 
     def reset(self) -> None:
         self._runtimes.clear()
+        self._retiring.clear()
         self._cells = ()
+
+    @property
+    def animating(self) -> bool:
+        return any(runtime.animating for runtime in (*self._runtimes, *self._retiring.values()))
+
+    def begin_withering(self) -> None:
+        """Wither every extra flower, keeping it drawn until it is gone."""
+        for runtime in self._runtimes:
+            self._retire(runtime)
+        self._runtimes.clear()
+
+    def _retire(self, runtime: LayeredRuntime) -> None:
+        runtime.begin_withering()
+        self._retiring[self._retired_slot] = runtime
+        self._retired_slot -= 1
+
+    def advance(self, duration: float) -> None:
+        """Carry withering flowers forward without pairing them to cursors."""
+        self._advance_retiring(duration)
+
+    def _advance_retiring(self, duration: float) -> None:
+        for runtime in self._retiring.values():
+            runtime.update(duration)
+        self._retiring = {s: r for s, r in self._retiring.items() if r.animating}
 
     def update(self, cells: tuple[CursorCell, ...], duration: float) -> None:
         self._cells = cells
+        self._advance_retiring(duration)
         if self.degraded:
-            self._runtimes.clear()
+            # The copies take over at the same cells, so these leave the way
+            # every other flower leaves rather than blinking out.
+            self.begin_withering()
             return
         # Cursors are paired to runtimes in screen order, so a block of them
         # moving together keeps each flower on the same logical cursor.
         while len(self._runtimes) > len(cells):
-            self._runtimes.pop()
+            self._retire(self._runtimes.pop())
         for _ in range(min(_BUILDS_PER_TICK, len(cells) - len(self._runtimes))):
             runtime = self._build(self._manifest)
             runtime.bee = _NoBee()
@@ -106,6 +139,9 @@ class MultiCursorFlowers:
             for slot, runtime in enumerate(self._runtimes, start=1):
                 for visual in runtime.visuals():
                     visuals.append(self._renumber(slot, visual, live))
+        for slot, runtime in self._retiring.items():
+            for visual in runtime.visuals():
+                visuals.append(self._renumber(slot, visual, live))
         for key in set(self._identifiers) - live:
             self._released.append(self._identifiers.pop(key))
         return tuple(visuals)
