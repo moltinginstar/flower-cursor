@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from .easing import clamp01, require_duration, smoothstep
+
 _STEM_GROWTH_RESPONSE = 8.5
 _BLOOM_GROWTH_RESPONSE = 5.5
 _VITALITY_GROWTH_RESPONSE = 6.0
@@ -13,15 +15,6 @@ _STEM_WITHER_RESPONSE = 4.0
 _BLOOM_WITHER_RESPONSE = 8.0
 _VITALITY_WITHER_RESPONSE = 6.0
 _LEAF_WITHER_RESPONSE = 8.0
-
-
-def _clamp01(value: float) -> float:
-    return max(0.0, min(1.0, value))
-
-
-def _smoothstep(value: float) -> float:
-    value = _clamp01(value)
-    return value * value * (3.0 - 2.0 * value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,19 +47,19 @@ class FlowerPose:
 
     @property
     def collapse(self) -> float:
-        return _smoothstep((0.50 - self.vitality) / 0.46)
+        return smoothstep((0.50 - self.vitality) / 0.46)
 
     @property
     def petal_curl(self) -> float:
-        return _smoothstep((0.86 - self.vitality) / 0.76)
+        return smoothstep((0.86 - self.vitality) / 0.76)
 
     @property
     def retraction(self) -> float:
-        return _smoothstep((0.038 - self.vitality) / 0.018)
+        return smoothstep((0.038 - self.vitality) / 0.018)
 
 
 @dataclass(slots=True)
-class _Spring:
+class Spring:
     value: float
     response: float
     damping: float = 1.0
@@ -97,11 +90,11 @@ class FlowerInstance:
     identifier: int
     cell: CursorCell
     active: bool
-    _stem: _Spring
-    _bloom: _Spring
-    _vitality: _Spring
-    _leaf: _Spring
-    _maturity: _Spring
+    _stem: Spring
+    _bloom: Spring
+    _vitality: Spring
+    _leaf: Spring
+    _maturity: Spring
     idle_phase: float = 0.0
 
     @classmethod
@@ -110,20 +103,20 @@ class FlowerInstance:
             identifier=identifier,
             cell=cell,
             active=True,
-            _stem=_Spring(0.0, response=_STEM_GROWTH_RESPONSE),
-            _bloom=_Spring(0.0, response=_BLOOM_GROWTH_RESPONSE),
-            _vitality=_Spring(1.0, response=_VITALITY_GROWTH_RESPONSE),
-            _leaf=_Spring(0.0, response=_LEAF_GROWTH_RESPONSE),
-            _maturity=_Spring(0.0, response=8.0),
+            _stem=Spring(0.0, response=_STEM_GROWTH_RESPONSE),
+            _bloom=Spring(0.0, response=_BLOOM_GROWTH_RESPONSE),
+            _vitality=Spring(1.0, response=_VITALITY_GROWTH_RESPONSE),
+            _leaf=Spring(0.0, response=_LEAF_GROWTH_RESPONSE),
+            _maturity=Spring(0.0, response=8.0),
         )
 
     @property
     def pose(self) -> FlowerPose:
-        stem = _clamp01(self._stem.value)
-        bloom = _clamp01(self._bloom.value)
-        vitality = _clamp01(self._vitality.value)
+        stem = clamp01(self._stem.value)
+        bloom = clamp01(self._bloom.value)
+        vitality = clamp01(self._vitality.value)
         wither_amount = 1.0 - vitality
-        late_wither = _smoothstep((wither_amount - 0.30) / 0.65)
+        late_wither = smoothstep((wither_amount - 0.30) / 0.65)
         sway = math.sin(self.idle_phase) * 0.065 * vitality
         breathing = 0.012 * (1.0 - math.cos(self.idle_phase)) * bloom**4 * vitality
         head_lean = sway + 0.02 * wither_amount + 0.16 * late_wither
@@ -134,12 +127,12 @@ class FlowerInstance:
             vitality=vitality,
             idle_phase=self.idle_phase,
             idle_sway=sway,
-            bud_size=_clamp01(0.18 + 0.78 * stem - 0.50 * bloom),
-            leaf_unfurl=_clamp01(self._leaf.value),
-            petal_open=_clamp01(bloom - breathing),
+            bud_size=clamp01(0.18 + 0.78 * stem - 0.50 * bloom),
+            leaf_unfurl=clamp01(self._leaf.value),
+            petal_open=clamp01(bloom - breathing),
             head_lean=head_lean,
             stem_bend=stem_bend,
-            maturity=_clamp01(self._maturity.value),
+            maturity=clamp01(self._maturity.value),
         )
 
     def begin_withering(self) -> None:
@@ -157,14 +150,13 @@ class FlowerInstance:
         self._leaf.response = _LEAF_GROWTH_RESPONSE
 
     def update(self, duration: float) -> None:
-        if duration < 0:
-            raise ValueError("duration must be non-negative")
+        require_duration(duration)
         if self.active:
             self._stem.step(1.0, duration)
-            bloom_target = _smoothstep((self._stem.value - 0.82) / 0.18)
+            bloom_target = smoothstep((self._stem.value - 0.82) / 0.18)
             self._bloom.step(bloom_target, duration)
             self._vitality.step(1.0, duration)
-            leaf_target = _smoothstep((self._stem.value - 0.36) / 0.54)
+            leaf_target = smoothstep((self._stem.value - 0.36) / 0.54)
             self._maturity.step(max(self._maturity.value, self._bloom.value), duration)
         else:
             self._bloom.step(0.0, duration)
@@ -172,7 +164,7 @@ class FlowerInstance:
             self._stem.step(self._stem.value, duration)
             self._maturity.step(self._maturity.value, duration)
             leaf_target = self._leaf.value
-        self._leaf.step(_clamp01(leaf_target), duration)
+        self._leaf.step(clamp01(leaf_target), duration)
         self.idle_phase = (self.idle_phase + duration * 1.7) % math.tau
 
     @property
@@ -230,8 +222,7 @@ class FlowerLifecycle:
         return returning
 
     def update(self, duration: float) -> None:
-        if duration < 0:
-            raise ValueError("duration must be non-negative")
+        require_duration(duration)
         for flower in self._flowers:
             flower.update(duration)
         self._flowers[:] = [flower for flower in self._flowers if not flower.dead]

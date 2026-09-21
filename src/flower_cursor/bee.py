@@ -8,6 +8,7 @@ import random
 from dataclasses import dataclass
 from pathlib import Path
 
+from .easing import clamp01, require_duration, smoothstep
 from .geometry import ViewportGeometry
 from .lifecycle import CursorCell
 
@@ -24,11 +25,6 @@ REST_CONTACT = tuple(
         "anchor"
     ]
 )
-
-
-def smooth(value: float) -> float:
-    value = max(0.0, min(1.0, value))
-    return value * value * (3 - 2 * value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +70,7 @@ class _FlightLeg:
         )
 
     def sample(self, time: float) -> tuple[float, float, float, float, float, float]:
-        t = max(0.0, min(1.0, time / self.duration))
+        t = clamp01(time / self.duration)
         values = []
         for c in (self.x, self.y):
             position = sum(value * t**i for i, value in enumerate(c))
@@ -143,12 +139,12 @@ class IdleBee:
     @property
     def folded(self) -> float:
         if self.departure is not None:
-            return self.departure_folded * (1 - smooth(self.departure / 0.22))
+            return self.departure_folded * (1 - smoothstep(self.departure / 0.22))
         if self.age < self.touchdown_time:
-            return 0.35 * smooth(
+            return 0.35 * smoothstep(
                 (self.age - self.landing_time) / (self.touchdown_time - self.landing_time)
             )
-        return 0.35 + 0.65 * smooth(
+        return 0.35 + 0.65 * smoothstep(
             (self.age - self.touchdown_time) / (self.approach_time - self.touchdown_time)
         )
 
@@ -204,8 +200,7 @@ class IdleBee:
         self._leg_time = 0.0
 
     def update(self, duration: float, head: tuple[float, float] | None = None) -> None:
-        if not math.isfinite(duration) or duration < 0:
-            raise ValueError("duration must be finite and non-negative")
+        require_duration(duration)
         if duration > 2:
             target = self.target
             self.reset()

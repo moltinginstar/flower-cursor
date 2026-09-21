@@ -5,8 +5,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 
+from .easing import require_duration, smoothstep
 from .idle_motion import idle_pose
-from .lifecycle import FlowerInstance, FlowerPose, _Spring
+from .lifecycle import FlowerInstance, FlowerPose, Spring
 
 _SHED_ORDER = (1, 4, 0, 5, 2, 3)
 _FLIGHT_LIFETIME = 1.6
@@ -24,8 +25,7 @@ class PetalFlight:
 
 
 def petal_decay(age: float) -> float:
-    progress = min(1.0, max(0.0, (age - 0.24) / 1.16))
-    return progress * progress * (3.0 - 2.0 * progress)
+    return smoothstep((age - 0.24) / 1.16)
 
 
 def petal_displacement(
@@ -65,11 +65,11 @@ class SheddingFlower:
         # Density-aware staggering keeps dense blooms inside the existing exit window;
         # the lifecycle and stalk timing remain unchanged.
         self._detach_interval = 0.05 if group_count <= 18 else 0.85 / (group_count - 1)
-        self.petals = tuple(_Spring(1.0, response=9.0) for _ in range(group_count))
+        self.petals = tuple(Spring(1.0, response=9.0) for _ in range(group_count))
         self.flights: list[PetalFlight] = []
-        self.head = _Spring(1.0, response=18.0)
-        self._opening = _Spring(flower.pose.petal_open, response=12.0)
-        self._lean = _Spring(0.5 + flower.pose.head_lean / 2, response=12.0, damping=0.7)
+        self.head = Spring(1.0, response=18.0)
+        self._opening = Spring(flower.pose.petal_open, response=12.0)
+        self._lean = Spring(0.5 + flower.pose.head_lean / 2, response=12.0, damping=0.7)
         self._exit_age = 0.0
         self._shed: set[int] = set()
         self._next_flight = 1
@@ -104,11 +104,9 @@ class SheddingFlower:
         self.flower.restore()
 
     def update(self, duration: float, *, wall_duration: float | None = None) -> None:
-        if not math.isfinite(duration) or duration < 0:
-            raise ValueError("duration must be finite and non-negative")
+        require_duration(duration)
         wall_duration = duration if wall_duration is None else wall_duration
-        if not math.isfinite(wall_duration) or wall_duration < 0:
-            raise ValueError("wall duration must be finite and non-negative")
+        require_duration(wall_duration, "wall duration")
         remaining = duration
         while remaining > 1e-12:
             dt = min(remaining, 1 / 120)

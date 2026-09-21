@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Protocol
 
+from .easing import clamp01, smoothstep
+
 # 22.05 kHz is ample for a ~230 Hz buzz and its first few harmonics, and halves
 # what the synthesis loop has to do between audio callbacks.
 SAMPLE_RATE = 22050
@@ -134,11 +136,6 @@ def _tables(timbre: Timbre) -> tuple[tuple[float, ...], tuple[float, ...]]:
     return tuple(v / peak for v in wave), tuple(stroke)
 
 
-def _smooth(value: float) -> float:
-    value = max(0.0, min(1.0, value))
-    return value * value * (3 - 2 * value)
-
-
 @dataclass(frozen=True, slots=True)
 class BuzzState:
     """What the bee sounds like right now."""
@@ -163,11 +160,11 @@ def buzz_state(bee, *, audible: bool = True) -> BuzzState:
     falloff = _FALLOFF * math.hypot(viewport.width, viewport.height)
     near = 1.0 / (1.0 + (distance / falloff) ** 2)
     border = min(bee.x, viewport.width - bee.x, bee.y, viewport.height - bee.y)
-    near *= _smooth(border / (_EDGE_FADE * bee.radius))
+    near *= smoothstep(border / (_EDGE_FADE * bee.radius))
     speed = math.hypot(bee.vx, bee.vy) / max(1.0, bee.size[0])
     rate = WINGBEAT * (0.9 + 0.2 * min(1.0, speed / _CRUISE))
     rate *= _SPIN + (1.0 - _SPIN) * wings
-    return BuzzState(max(0.0, min(1.0, wings * near)), rate)
+    return BuzzState(clamp01(wings * near), rate)
 
 
 class Voice:
@@ -188,7 +185,7 @@ class Voice:
         if sample_rate <= 0:
             raise ValueError("sample_rate must be positive")
         self.sample_rate = sample_rate
-        self.volume = max(0.0, min(1.0, volume))
+        self.volume = clamp01(volume)
         self.timbre = timbre
         self.target = BuzzState(0.0, WINGBEAT)
         self._random = (rng or random).random

@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import math
 
+from .easing import smoothstep
+
 
 def wilt_progress(vitality: float) -> float:
     if vitality >= 0.55:
         return 0.0
     if vitality <= 0.02:
         return 1.0
-    progress = math.log(0.55 / vitality) / math.log(0.55 / 0.02)
-    return progress * progress * (3.0 - 2.0 * progress)
+    return smoothstep(math.log(0.55 / vitality) / math.log(0.55 / 0.02))
 
 
 def wilt_point(t: float, progress: float) -> tuple[float, float, float]:
@@ -28,8 +29,7 @@ def wilt_point(t: float, progress: float) -> tuple[float, float, float]:
         angle = math.pi * progress * position**power
         forward += math.sin(angle) * step
         height += math.cos(angle) * step
-    settling = min(1.0, max(0.0, (progress - 0.55) / 0.45))
-    settling = settling * settling * (3.0 - 2.0 * settling)
+    settling = smoothstep((progress - 0.55) / 0.45)
     length = 1.0 - 0.88 * settling
     side = -0.22 * forward + 0.06 * t**2 * math.sin(math.tau * t) * math.sin(math.pi * progress)
     side = 0.09 * math.tanh(side / 0.09)
