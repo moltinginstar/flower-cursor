@@ -27,6 +27,25 @@ FLOWER_MANIFESTS = {
     "coral": DEFAULT_MANIFEST,
     "cornflower": DEFAULT_MANIFEST.parent.parent / "cornflower" / "manifest.json",
 }
+# Kitty's `shell` option runs a program with no arguments of its own, so the
+# species a user wants in every window has to arrive some other way.
+SPECIES_VARIABLE = "FLOWER_CURSOR_SPECIES"
+
+
+def selected_species(argument: str | None, *, overridden: bool) -> str | None:
+    """Which flower to grow, from the command line or the environment.
+
+    An unreadable name is worth a word but not a dead window: every Kitty
+    window runs this, so a typo in a config file falls back to the default
+    flower rather than leaving the user with no shell at all.
+    """
+    if argument is not None or overridden:
+        return argument
+    species = os.environ.get(SPECIES_VARIABLE) or None
+    if species is not None and species not in FLOWER_MANIFESTS:
+        print(f"flower-cursor: unknown flower {species!r}, using the default", file=sys.stderr)
+        return None
+    return species
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -85,9 +104,10 @@ def main(argv: list[str] | None = None) -> int:
     focused = True
     previous: CursorCell | None = None
     current_cell: CursorCell | None = None
+    species = selected_species(args.flower, overridden=args.shedding_manifest is not None)
     manifest = (
         args.shedding_manifest
-        or (FLOWER_MANIFESTS[args.flower] if args.flower is not None else None)
+        or (FLOWER_MANIFESTS[species] if species is not None else None)
         or (DEFAULT_MANIFEST if args.render else None)
     )
     if manifest is not None:
@@ -97,9 +117,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             from .layered import LayeredCompositor, LayeredRuntime
 
-            selected_species = {"species": args.flower} if args.flower is not None else {}
-            runtime = LayeredRuntime(manifest, **selected_species)
-            compositor = LayeredCompositor(manifest, **selected_species)
+            chosen = {"species": species} if species is not None else {}
+            runtime = LayeredRuntime(manifest, **chosen)
+            compositor = LayeredCompositor(manifest, **chosen)
             flowers = MultiCursorFlowers(manifest, independent_limit=args.independent_cursors)
         except Exception:
             if args.kitty_shell:
