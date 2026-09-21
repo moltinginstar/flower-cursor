@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import random
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -12,6 +13,7 @@ from PIL import Image, ImageOps
 
 from .bee import BeePose, IdleBee
 from .bee_art import BeeCompositor
+from .geometry import FlowerLayout, ViewportGeometry
 from .lifecycle import CursorCell, FlowerInstance
 from .pose_library import PoseLibrary
 from .runtime import DEFAULT_ANIMATION_SPEED, FlowerVisual
@@ -29,15 +31,25 @@ class BeeVisual(FlowerVisual):
 
 
 class LayeredRuntime:
-    def __init__(self, manifest: Path) -> None:
+    def __init__(self, manifest: Path, *, bee_rng: random.Random | None = None) -> None:
         self.pose_library = PoseLibrary.from_manifest(manifest)
         self.flowers: list[SheddingFlower] = []
         self.active: SheddingFlower | None = None
         self._next_identifier = 1
-        self.bee = IdleBee()
+        self.bee = IdleBee(bee_rng)
         self._bee_identifier = 0
         self._bee_flower: SheddingFlower | None = None
         self._heads = {p["name"]: p["head"] for p in json.loads(manifest.read_text())["poses"]}
+        self._viewport: ViewportGeometry | None = None
+        self._layout = FlowerLayout(self.pose_library.root_anchor)
+
+    def set_geometry(self, viewport: ViewportGeometry | None, layout: FlowerLayout) -> None:
+        self._viewport = viewport
+        self._layout = layout
+        width, height = layout.size(viewport.cell_size) if viewport is not None else (0, 0)
+        self.bee.set_geometry(
+            viewport, (max(1, round(width * 0.20 * 1.75)), max(1, round(height * 0.20 * 1.75)))
+        )
 
     def move_to(self, cell: CursorCell) -> None:
         if self.active is not None and self.active.flower.cell == cell:
@@ -72,9 +84,12 @@ class LayeredRuntime:
         self.flowers[:] = [f for f in self.flowers if not f.finished]
         generation = self.bee.generation
         head = None
-        if self.active is not None:
+        if self.active is not None and self._viewport is not None:
             samples = self.pose_library.sample_animated(self.active.pose)
-            head = tuple(sum(self._heads[a.name][i] * w for a, w in samples) for i in range(2))
+            local_head = tuple(
+                sum(self._heads[a.name][i] * w for a, w in samples) for i in range(2)
+            )
+            head = self._layout.point(self.active.flower.cell, self._viewport.cell_size, local_head)
         self.bee.update(duration, head)
         if self.bee.generation != generation:
             self._bee_identifier = self._next_identifier
@@ -239,7 +254,7 @@ class LayeredCompositor:
 
     def frame(self, visual: FlowerVisual, duration: float = 1 / 60) -> Image.Image:
         if isinstance(visual, BeeVisual):
-            return self._bee.frame(visual.bee, self.size)
+            return self._bee.frame(visual.bee)
         if not isinstance(visual, LayeredVisual):
             raise TypeError("layered compositor requires a layered visual")
         canvas = Image.new("RGBA", (self.size, self.size))

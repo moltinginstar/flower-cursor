@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import math
 import re
 import secrets
 from collections.abc import Callable
@@ -10,7 +11,9 @@ from collections.abc import Callable
 from PIL import Image
 
 from .compositor import FlowerCompositor, FrameCompositor
+from .geometry import FlowerLayout, ViewportGeometry, viewport_crop
 from .kitty_graphics import MAX_IMAGE_ID, delete_image, delete_placement, place_image, transmit_png
+from .layered import BeeVisual
 from .lifecycle import CursorCell
 from .pose_library import PoseLibrary
 from .runtime import FlowerVisual
@@ -48,13 +51,15 @@ class FlowerRenderer:
         self._anchor_columns = anchor_columns
         self._anchor_rows = anchor_rows
         self._z_index = z_index
-        self._placements: dict[int, tuple[CursorCell, bytes, int]] = {}
+        self._placements: dict[int, tuple[object, bytes, int]] = {}
         self._buffers = {False: self._placements, True: {}}
         self._alternate = False
         self._invalidated: set[bool] = set()
         if canvas_scale < 1:
             raise ValueError("canvas scale must be positive")
-        self._canvas_scale = canvas_scale
+        self.layout = FlowerLayout(
+            pose_library.root_anchor, columns, rows, anchor_columns, anchor_rows, canvas_scale
+        )
         self._compositor = compositor if compositor is not None else FlowerCompositor()
         self._output_tail = b""
         self._cell_size = (8, 16)
@@ -65,7 +70,7 @@ class FlowerRenderer:
         self._image_base = 1 + secrets.randbelow(MAX_IMAGE_ID - _ID_SPAN)
         # Bases are handed out on demand and returned when a placement goes, so
         # a long session's ever-rising flower identifiers cannot alias.
-        self._image_bases: dict[int, int] = {}
+        self._image_bases: dict[object, int] = {}
         self._released_bases: list[int] = []
         self._allocated_bases = 0
         # appearance -> (pixels, image id) for frames shared by many placements.
@@ -107,21 +112,18 @@ class FlowerRenderer:
         current_cell: CursorCell,
         duration: float = 1 / 60,
         cell_size: tuple[int, int] | None = None,
+        *,
+        viewport: ViewportGeometry | None = None,
     ) -> None:
         self.flush_pending()
+        if viewport is not None:
+            cell_size = viewport.cell_size
         geometry_changed = cell_size is not None and cell_size != self._cell_size
         if cell_size is not None and min(cell_size) > 0:
             self._cell_size = cell_size
         cell_width, cell_height = self._cell_size
-        # Kitty subtracts X/Y offsets from a c/r rectangle's pixel dimensions.
-        width = self._columns * cell_width - min(8, cell_width - 1)
-        y_offset = min(2, cell_height - 1)
-        height = self._rows * cell_height - y_offset
-        width *= self._canvas_scale
-        height *= self._canvas_scale
-        root_x = self.pose_library.root_anchor[0] * width
-        horizontal_offset = round(self._anchor_columns * cell_width - root_x)
-        visible_ids = {visual.identifier for visual in visuals}
+        width, height = self.layout.size(self._cell_size)
+        visible_ids: set[int] = set()
         # Visuals that declare the same appearance composite to the same frame;
         # copies of one flower are drawn once and placed many times. The pixels
         # are memoized with the frame: serializing an identical image once per
@@ -130,27 +132,60 @@ class FlowerRenderer:
         shared_seen: set[object] = set()
         retired: list[int] = []
         for visual in visuals:
-            memo = drawn.get(visual.appearance) if visual.appearance is not None else None
-            if memo is None:
+            if isinstance(visual, BeeVisual):
+                if viewport is None:
+                    continue
                 frame = self._compositor.frame(visual, duration)
-                frame = (
-                    frame.convert("RGBa")
-                    .resize((width, height), Image.Resampling.LANCZOS)
-                    .convert("RGBA")
-                )
-                memo = (frame, frame.tobytes())
-                if visual.appearance is not None:
-                    drawn[visual.appearance] = memo
-            frame, pixels = memo
-            left = (visual.cell.column - self._anchor_columns) * cell_width + horizontal_offset
-            column, x_offset = divmod(max(0, left), cell_width)
-            if left < 0:
-                frame = frame.crop((-left, 0, width, height))
+                left = math.floor(visual.bee.x - frame.width / 2 + 0.5)
+                top = math.floor(visual.bee.y - frame.height / 2 + 0.5)
+                artwork = frame.getchannel("A").getbbox()
+                if artwork is None:
+                    continue
+                frame = frame.crop(artwork)
+                left += artwork[0]
+                top += artwork[1]
+                bounds = viewport_crop((left, top), frame.size, viewport)
+                if bounds is None:
+                    continue
+                frame = frame.crop(bounds)
+                left += bounds[0]
+                top += bounds[1]
+                anchor_left = min(left, viewport.columns * cell_width - 1)
+                anchor_top = min(top, viewport.rows * cell_height - 1)
+                if (anchor_left, anchor_top) != (left, top):
+                    padded = Image.new(
+                        "RGBA",
+                        (frame.width + left - anchor_left, frame.height + top - anchor_top),
+                    )
+                    padded.alpha_composite(frame, (left - anchor_left, top - anchor_top))
+                    frame = padded
+                    left, top = anchor_left, anchor_top
                 pixels = frame.tobytes()
-            target = CursorCell(max(0, visual.cell.row - self._anchor_rows), column)
-            # A cropped frame is a different image, so a copy hanging off the
-            # left edge falls back to carrying its own data.
-            appearance = visual.appearance if left >= 0 else None
+                appearance = None
+            else:
+                memo = drawn.get(visual.appearance) if visual.appearance is not None else None
+                if memo is None:
+                    frame = self._compositor.frame(visual, duration)
+                    frame = (
+                        frame.convert("RGBa")
+                        .resize((width, height), Image.Resampling.LANCZOS)
+                        .convert("RGBA")
+                    )
+                    memo = (frame, frame.tobytes())
+                    if visual.appearance is not None:
+                        drawn[visual.appearance] = memo
+                frame, pixels = memo
+                left, top = self.layout.origin(visual.cell, self._cell_size)
+                appearance = visual.appearance if left >= 0 else None
+                if left < 0:
+                    frame = frame.crop((-left, 0, width, height))
+                    pixels = frame.tobytes()
+                    left = 0
+            column, x_offset = divmod(left, cell_width)
+            row, y_offset = divmod(top, cell_height)
+            target = CursorCell(row, column)
+            placement = (target, x_offset, y_offset, frame.size)
+            visible_ids.add(visual.identifier)
             previous = self._placements.get(visual.identifier)
             shared = None
             if appearance is not None:
@@ -165,7 +200,7 @@ class FlowerRenderer:
             if (
                 not geometry_changed
                 and previous is not None
-                and previous[:2] == (visual.cell, pixels)
+                and previous[:2] == (placement, pixels)
                 and (shared is None or previous[2] == shared[1])
             ):
                 continue
@@ -192,6 +227,7 @@ class FlowerRenderer:
                     placement_id=visual.identifier,
                     x_offset=x_offset,
                     y_offset=y_offset,
+                    z_index=self._z_index + int(isinstance(visual, BeeVisual)),
                 )
             if previous is not None and previous[2] not in retired:
                 delete_placement(
@@ -203,7 +239,7 @@ class FlowerRenderer:
                     write=self._write,
                 )
             self._write(b"\x1b[u")
-            self._placements[visual.identifier] = (visual.cell, pixels, image_id)
+            self._placements[visual.identifier] = (placement, pixels, image_id)
 
         for identifier in set(self._placements) - visible_ids:
             image_id = self._placements[identifier][2]
@@ -245,10 +281,29 @@ class FlowerRenderer:
     def _shared_ids(self) -> set[int]:
         return {image_id for _, image_id in self._shared.values()}
 
-    def _transmit(self, frame: Image.Image, **kwargs: object) -> None:
+    def _transmit(
+        self,
+        frame: Image.Image,
+        *,
+        image_id: int,
+        placement_id: int | None = None,
+        x_offset: int = 0,
+        y_offset: int = 0,
+        place: bool = True,
+        z_index: int | None = None,
+    ) -> None:
         buffer = io.BytesIO()
         frame.save(buffer, format="PNG", compress_level=1)
-        transmit_png(buffer.getvalue(), z_index=self._z_index, write=self._write, **kwargs)
+        transmit_png(
+            buffer.getvalue(),
+            image_id=image_id,
+            placement_id=placement_id,
+            x_offset=x_offset,
+            y_offset=y_offset,
+            place=place,
+            z_index=self._z_index if z_index is None else z_index,
+            write=self._write,
+        )
 
     def _next_shared_id(self, appearance: object, previous: tuple[bytes, int] | None) -> int:
         # Alternate between two ids so a replacement frame is never transmitted

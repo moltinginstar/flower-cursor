@@ -11,6 +11,7 @@ import termios
 import time
 from pathlib import Path
 
+from .geometry import ViewportGeometry
 from .graphics_renderer import FlowerRenderer
 from .lifecycle import CursorCell
 from .multi_cursor import MultiCursorReplyFilter, MultiCursorTracker
@@ -136,18 +137,15 @@ def main(argv: list[str] | None = None) -> int:
             )
             if rows and columns:
                 tracker.screen_size = (rows, columns)
+            viewport = ViewportGeometry.measured(rows, columns, width, height)
+            runtime.set_geometry(viewport, renderer.layout)
             runtime.update(duration)
-            cell_size = (
-                (width // columns, height // rows)
-                if rows and columns and width and height
-                else None
-            )
             visuals = runtime.visuals()
             if flowers is not None:
                 flowers.update(tracker.cells, duration)
                 stamp = runtime.active.flower.identifier if runtime.active is not None else None
                 visuals = flowers.visuals(visuals, stamp)
-            renderer.render(visuals, current_cell, duration, cell_size)
+            renderer.render(visuals, current_cell, duration, viewport=viewport)
             output.flush()
 
     def close_graphics() -> None:
