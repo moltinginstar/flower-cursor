@@ -339,10 +339,11 @@ def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     scene, rig, wings, legs = build()
     selection = os.environ.get("BEE_POSES")
+    heading_selection = os.environ.get("BEE_HEADINGS")
     indices = [int(i) for i in selection.split(",")] if selection else list(range(16))
-    headings = [
-        int(i) for i in os.environ.get("BEE_HEADINGS", ",".join(map(str, HEADINGS))).split(",")
-    ]
+    headings = [int(i) for i in (heading_selection or ",".join(map(str, HEADINGS))).split(",")]
+    if not indices or not headings:
+        raise ValueError("BEE_POSES and BEE_HEADINGS must each select at least one value")
     records, contacts = [], {}
     for heading in headings:
         for i in indices:
@@ -359,13 +360,32 @@ def main():
     if not selection:
         pose(scene, rig, wings, legs, 15, 0)
         bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / "blender/idle_bee.blend"))
-    (OUTPUT / "manifest.json").write_text(
+    # A partial bake re-renders a few frames beside the ones already on disk, so
+    # it has to merge into the manifest rather than replace it. OUTPUT defaults
+    # to the shipped asset directory, and bee.py reads contacts["0"]["anchor"]
+    # at import: a wholesale rewrite from `BEE_POSES=3,4` would leave contacts
+    # empty and break the package for everyone.
+    manifest_path = OUTPUT / "manifest.json"
+    previous = {}
+    if (selection or heading_selection) and manifest_path.exists():
+        previous = json.loads(manifest_path.read_text())
+    frames = list(previous.get("frames", []))
+    frames += [name for name in records if name not in frames]
+    merged_headings = list(previous.get("headings", []))
+    merged_headings += [h for h in headings if h not in merged_headings]
+    contacts = {**previous.get("contacts", {}), **contacts}
+    if "0" not in contacts:
+        raise ValueError(
+            "no contact frame for heading 0: bake pose 15 at heading 0 at least once, "
+            "because bee.py reads contacts['0']['anchor'] at import"
+        )
+    manifest_path.write_text(
         json.dumps(
             {
-                "frames": records,
+                "frames": frames,
                 "flight_frames": 8,
                 "landing_frames": 9,
-                "headings": headings,
+                "headings": merged_headings,
                 "contacts": contacts,
                 "author": "Blender 5.2 / bake_idle_bee.py",
                 "size": scene.render.resolution_x,

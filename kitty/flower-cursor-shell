@@ -20,8 +20,19 @@ passwd_shell() {
     fi
 }
 
+# The basename of $SHELL, or the empty string when SHELL is unset. It is
+# ${SHELL-} and not $SHELL because a bare ${SHELL##*/} is a fatal "parameter
+# not set" under `set -u` in exactly the unset case the callers must answer -
+# the window would die instead of falling back to a plain shell. The
+# `env read_from_shell` branch below inlines these two lines rather than
+# calling this, to stay free of forks on Kitty's 1.5 s budget.
+shell_name() {
+    name=${SHELL-}
+    echo "${name##*/}"
+}
+
 real_shell() {
-    case "${SHELL##*/}" in
+    case "$(shell_name)" in
         ''|flower-cursor|flower-cursor-shell)
             shell=$(passwd_shell)
             [ -n "$shell" ] && echo "$shell" || echo "/bin/sh"
@@ -68,7 +79,8 @@ if [ "$#" -gt 0 ]; then
     # Deliberately not `real_shell`: this branch is on Kitty's 1.5 s budget for
     # `env read_from_shell`, and a passwd lookup forks. $SHELL is set for all
     # but the pathological case this guards against.
-    case "${SHELL##*/}" in
+    name=${SHELL-}
+    case "${name##*/}" in
         ''|flower-cursor|flower-cursor-shell) exec /bin/sh "$@" ;;
         *) exec "$SHELL" "$@" ;;
     esac

@@ -35,6 +35,22 @@ class CursorReportParser:
     def __init__(self) -> None:
         self._pending = b""
 
+    @property
+    def has_pending(self) -> bool:
+        """Whether bytes are being held back waiting for the rest of a reply."""
+        return bool(self._pending)
+
+    def flush(self) -> bytes:
+        """Give up on a held partial and hand it over as ordinary input.
+
+        A lone Escape looks like the start of a report, so it is held. Without
+        this the byte would sit here until the next keystroke, which in
+        observe-only mode - where no focus filter holds it first - makes Escape
+        look dead in vim or readline.
+        """
+        pending, self._pending = self._pending, b""
+        return pending
+
     def feed(self, data: bytes) -> tuple[bytes, tuple[CursorReport, ...]]:
         buffer = self._pending + data
         self._pending = b""

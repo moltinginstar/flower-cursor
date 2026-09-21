@@ -125,6 +125,7 @@ def run(
     next_tick = now
     last_tick = now
     focus_hold: float | None = None
+    report_hold: float | None = None
     resize_handler = signal.getsignal(signal.SIGWINCH)
 
     def request_resize(_signum: int, _frame: object) -> None:
@@ -176,6 +177,8 @@ def run(
             else:
                 recovery_deadline = output_arbiter.recovery_deadline
                 deadlines = [recovery_deadline] if recovery_deadline is not None else []
+            if report_hold is not None:
+                deadlines.append(report_hold)
             timeout = max(0.0, min(deadlines) - now) if deadlines else None
             events = selector.select(timeout)
             for key, _mask in events:
@@ -203,6 +206,7 @@ def run(
                         if not data:
                             continue
                     passthrough, reports = parser.feed(data)
+                    report_hold = time.monotonic() + _FOCUS_HOLD if parser.has_pending else None
                     if stdin_filter is not None:
                         passthrough = stdin_filter(passthrough)
                     if passthrough:
@@ -236,6 +240,18 @@ def run(
                 resize_pending = False
             now = time.monotonic()
             output_arbiter.poll(now)
+            # The same release the focus filter gets, for the same reason: a
+            # lone Escape is the start of a cursor report until it is clear no
+            # more is coming. Without this it would wait on the next keystroke,
+            # which with no focus filter in front of it - observe-only mode -
+            # leaves Escape looking dead in vim or readline.
+            if report_hold is not None and now >= report_hold:
+                report_hold = None
+                held = parser.flush()
+                if held and stdin_filter is not None:
+                    held = stdin_filter(held)
+                if held:
+                    _write_all(master_fd, held)
             if focus_filter is not None:
                 # A held partial is released once it is clear no more of it is
                 # coming, so a lone Escape reaches the child a frame later

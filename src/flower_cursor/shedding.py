@@ -131,10 +131,7 @@ class SheddingFlower:
                     petal.step(petal.value, dt)
                 self._exit_age += dt
                 for order, index in enumerate(self.shedding_order):
-                    if (
-                        index in self._shed
-                        or self._exit_age < 0.12 + order * self._detach_interval
-                    ):
+                    if index in self._shed or self._exit_age < 0.12 + order * self._detach_interval:
                         continue
                     self._shed.add(index)
                     petal = self.petals[index]

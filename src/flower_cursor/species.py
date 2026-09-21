@@ -8,14 +8,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .manifest import manifest_data
+from .settings import DEFAULT_SPECIES
 
 # The default flower was authored before there were species, under the name
 # "coral" and with six petals shed in a hand-picked order. Its manifest,
 # assets/layered/manifest.json, still carries neither a `species` key nor
-# `shedding_groups`, so these two are what it resolves to - they are the
-# default anemone's actual behaviour, not a compatibility shim for someone
-# else's old file. Deleting them changes what the default cursor does.
-LEGACY_CORAL_SPECIES = "coral"
+# `shedding_groups`, so this order is what it resolves to - it is the default
+# anemone's actual behaviour, not a compatibility shim for someone else's old
+# file. Deleting it changes what the default cursor does.
+#
+# The name, though, resolves to DEFAULT_SPECIES: that manifest is the anemone
+# the catalogue offers, and naming it "coral" made the catalogue's own default
+# unusable when passed explicitly - load_species_metadata(DEFAULT_MANIFEST,
+# selected_species="anemone") raised. "coral" is not an accepted alias.
 LEGACY_CORAL_SHEDDING_ORDER = (1, 4, 0, 5, 2, 3)
 
 
@@ -43,15 +48,13 @@ def load_species_metadata(
 def metadata_from_manifest(
     data: Mapping[str, object], *, selected_species: str | None = None
 ) -> SpeciesMetadata:
-    species_id = data.get("species", LEGACY_CORAL_SPECIES)
+    species_id = data.get("species", DEFAULT_SPECIES)
     if not isinstance(species_id, str) or not species_id:
         raise ValueError("manifest species must be a non-empty string")
     if selected_species is not None and species_id != selected_species:
-        if not (selected_species == LEGACY_CORAL_SPECIES and "species" not in data):
-            raise ValueError(
-                f"manifest species {species_id!r} does not match selected {selected_species!r}"
-            )
-        species_id = selected_species
+        raise ValueError(
+            f"manifest species {species_id!r} does not match selected {selected_species!r}"
+        )
 
     raw_groups = data.get("shedding_groups")
     if raw_groups is None:

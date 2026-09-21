@@ -233,35 +233,45 @@ def leaves(kind, pose):
             for sign in (-1, 1):
                 direction = (RIGHT * sign * 0.80 + up * 0.60).normalized()
                 junction = start + direction * 0.24
-                base.add_cylinder_between(
-                    f"Dahlia leaf rachis {node} {sign}",
-                    start,
-                    junction,
-                    0.008,
-                    greens[0],
-                    vertices=8,
-                )
-                lamina(
-                    f"Dahlia terminal leaflet {node} {sign}",
-                    junction,
-                    direction,
-                    0.44 - node * 0.06,
-                    0.135,
-                    greens,
-                    "toothed",
-                )
+                # Every part of the leaf carries its node index, because the
+                # whole leaf has to travel with the one stem height it grows
+                # from. A reader cannot recover it from the name: the lateral
+                # leaflets carry a trailing branch token and the others do not.
+                parts = [
+                    base.add_cylinder_between(
+                        f"Dahlia leaf rachis {node} {sign}",
+                        start,
+                        junction,
+                        0.008,
+                        greens[0],
+                        vertices=8,
+                    ),
+                    lamina(
+                        f"Dahlia terminal leaflet {node} {sign}",
+                        junction,
+                        direction,
+                        0.44 - node * 0.06,
+                        0.135,
+                        greens,
+                        "toothed",
+                    ),
+                ]
                 side = NORMAL.cross(direction).normalized()
                 for branch in (-1, 1):
                     lateral = (direction * 0.42 + side * branch * 0.80).normalized()
-                    lamina(
-                        f"Dahlia lateral leaflet {node} {sign} {branch}",
-                        start + direction * 0.18,
-                        lateral,
-                        0.32 - node * 0.04,
-                        0.105,
-                        greens,
-                        "toothed",
+                    parts.append(
+                        lamina(
+                            f"Dahlia lateral leaflet {node} {sign} {branch}",
+                            start + direction * 0.18,
+                            lateral,
+                            0.32 - node * 0.04,
+                            0.105,
+                            greens,
+                            "toothed",
+                        )
                     )
+                for part in parts:
+                    part["leaf_node"] = node
     elif kind == "crocus":
         stripe = pigment("Crocus silver-white midstripe", (0.60, 0.66, 0.55), transmission=0.02)
         for index, (sign, spread, length) in enumerate(

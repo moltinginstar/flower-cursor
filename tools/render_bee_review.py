@@ -9,11 +9,14 @@ import os
 import random
 import re
 import struct
+import sys
 import termios
 from dataclasses import asdict
 from pathlib import Path
 
 from PIL import Image, ImageDraw
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from flower_cursor.geometry import ViewportGeometry
 from flower_cursor.graphics_renderer import FlowerRenderer
@@ -239,8 +242,17 @@ def main():
     checkpoint("01-outside")
     for _ in range(240):
         runtime.update(1 / 60)
-        image = compositor.frame(next(v for v in runtime.visuals() if isinstance(v, BeeVisual)))
+        # The bee is only among the visuals while it is visible, and a faded or
+        # off-screen frame has an empty alpha channel. Either one means there is
+        # nothing on screen to have entered yet, so keep looking rather than
+        # dying with StopIteration or a None subscript.
+        visual = next((v for v in runtime.visuals() if isinstance(v, BeeVisual)), None)
+        if visual is None:
+            continue
+        image = compositor.frame(visual)
         bounds = image.getchannel("A").getbbox()
+        if bounds is None:
+            continue
         left = round(runtime.bee.x - image.width / 2) + bounds[0]
         top = round(runtime.bee.y - image.height / 2) + bounds[1]
         right = round(runtime.bee.x - image.width / 2) + bounds[2]

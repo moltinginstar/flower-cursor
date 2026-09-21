@@ -223,8 +223,7 @@ def test_real_variety_sheds_independently_and_grows_new_bud_after_death(species:
     assert replacement.pose.stem == 0
     runtime.update(0.12)
     assert (
-        compositor.frame(flower_visual(runtime, replacement)).getchannel("A").getbbox()
-        is not None
+        compositor.frame(flower_visual(runtime, replacement)).getchannel("A").getbbox() is not None
     )
 
 
@@ -270,12 +269,8 @@ def test_real_variety_bee_feet_touch_each_rendered_bloom(species: str) -> None:
         width, height = layout.size(VIEWPORT.cell_size)
         bounds = runtime.bee.landing_support_bounds
         assert bounds is not None
-        assert bounds[0] == pytest.approx(
-            (support["x"][0] * width, support["x"][1] * width)
-        )
-        assert bounds[1] == pytest.approx(
-            (support["y"][0] * height, support["y"][1] * height)
-        )
+        assert bounds[0] == pytest.approx((support["x"][0] * width, support["x"][1] * width))
+        assert bounds[1] == pytest.approx((support["y"][0] * height, support["y"][1] * height))
         assert bounds[0][0] <= runtime.bee.landing_offset[0] <= bounds[0][1]
         assert bounds[1][0] <= runtime.bee.landing_offset[1] <= bounds[1][1]
 

@@ -149,7 +149,7 @@ def _grow(
     try:
         from .layered import LayeredCompositor, LayeredRuntime
 
-        chosen = {"species": species} if species not in (None, DEFAULT_SPECIES) else {}
+        chosen = {"species": species} if species is not None else {}
         return (
             LayeredRuntime(manifest, **chosen),
             LayeredCompositor(manifest, **chosen),

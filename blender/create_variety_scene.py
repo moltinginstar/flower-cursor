@@ -95,7 +95,11 @@ def build_scene(kind, pose, path):
     ]
     for obj in leaves:
         if kind == "dahlia":
-            height = (0.32, 0.57)[int(obj.name.split()[-2])]
+            # The node index is read from the property the art module stamps on
+            # each leaf part, not from the name: the lateral leaflets end in a
+            # branch token, so the old name[-2] lookup read the sign instead and
+            # lifted every node-0 lateral leaflet off its own rachis.
+            height = (0.32, 0.57)[obj["leaf_node"]]
             anchor = study.stem_point(
                 height, reference.stem, reference.stem_bend, reference.head_lean
             )

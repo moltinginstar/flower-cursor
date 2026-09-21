@@ -48,12 +48,28 @@ block() {
     echo "$END"
 }
 
+# Drop our own block and keep every other line. A block is only a block once
+# its end marker turns up: if the user has removed or reflowed that line, the
+# held-back lines are printed again rather than swallowed, because otherwise a
+# --uninstall or a second --configure would silently delete the whole remainder
+# of the user's kitty.conf.
 without_block() {
     [ -f "$KITTY_CONFIG" ] || return 0
     awk -v b="$BEGIN" -v e="$END" '
-        $0 == b { skip = 1 }
-        skip != 1 { print }
-        $0 == e { skip = 0 }
+        skip == 1 {
+            held = held $0 "\n"
+            if ($0 == e) { skip = 0; held = "" }
+            next
+        }
+        $0 == b { skip = 1; held = $0 "\n"; next }
+        { print }
+        END {
+            if (skip == 1) {
+                printf "%s", held
+                print "install.sh: warning: no end marker after " b " in your kitty.conf;" > "/dev/stderr"
+                print "  leaving those lines alone. Remove them by hand if they are ours." > "/dev/stderr"
+            }
+        }
     ' "$KITTY_CONFIG"
 }
 
@@ -106,10 +122,16 @@ have kitty || echo "install.sh: warning: no kitty on your PATH; this only does a
 have uv || { echo "install.sh: uv is required: https://docs.astral.sh/uv/getting-started/installation/" >&2; exit 1; }
 
 # Run from a checkout, install that checkout. Run from a pipe, fetch one.
+# `sh install.sh` from inside the checkout leaves no slash in $0, so "." is a
+# candidate too; both are confirmed by files only this project has, so a pipe
+# run from some unrelated project's directory still fetches a real checkout.
+is_checkout() { [ -f "$1/pyproject.toml" ] && [ -f "$1/kitty/flower-cursor-shell" ]; }
 here=""
 case "${0-}" in
-    */*) [ -f "${0%/*}/pyproject.toml" ] && here="$(CDPATH= cd -- "${0%/*}" && pwd)" ;;
+    */*) candidate="${0%/*}" ;;
+    *) candidate="." ;;
 esac
+is_checkout "$candidate" && here="$(CDPATH= cd -- "$candidate" && pwd)"
 if [ -n "$here" ]; then
     DIR="$here"
     echo "Installing from $DIR."

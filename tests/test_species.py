@@ -22,7 +22,7 @@ CORNFlower_ORDER = (1, 7, 3, 9, 5, 11, 0, 6, 2, 8, 4, 10, 12, 15, 13, 16, 14, 17
 def test_legacy_manifest_metadata_preserves_coral_shedding_order() -> None:
     metadata = metadata_from_manifest({})
 
-    assert metadata.species_id == "coral"
+    assert metadata.species_id == DEFAULT_SPECIES
     assert [group.layer for group in metadata.shedding_groups] == [f"petal_{i}" for i in range(6)]
     assert metadata.shedding_order == LEGACY_CORAL_SHEDDING_ORDER
     assert metadata.landing_support_bounds is None

@@ -126,15 +126,28 @@ def main():
                 bpy.ops.render.render(write_still=True)
         records.append(record)
         print(f"LAYERED {name}", flush=True)
+    if not records:
+        raise ValueError(
+            f"FLOWER_LAYER_POSES={','.join(sorted(selection))} matched no pose; "
+            f"known poses are {', '.join(name for name, _ in poses())}"
+        )
+    # A selective bake renders a few poses beside the ones already on disk, so it
+    # merges into the manifest rather than replacing it. Writing only the
+    # selected records would leave every other rendered pose unreachable.
+    destination = OUTPUT / "manifest.json"
+    previous = json.loads(destination.read_text()) if selection and destination.exists() else {}
+    rebaked = {record["name"]: record for record in records}
+    merged = [rebaked.pop(pose["name"], pose) for pose in previous.get("poses", [])]
+    merged += [record for record in records if record["name"] in rebaked]
     manifest = {
-        "poses": records,
+        "poses": merged,
         "root_anchor": [root.x, 1 - root.y],
         "projection_right": list(right),
         "projection_down": list(down),
     }
     temporary = OUTPUT / "manifest.tmp"
     temporary.write_text(json.dumps(manifest, indent=2) + "\n")
-    temporary.replace(OUTPUT / "manifest.json")
+    temporary.replace(destination)
 
 
 if __name__ == "__main__":
