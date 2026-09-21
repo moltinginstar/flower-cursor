@@ -7,7 +7,7 @@ name = "flower-cursor"
 version = "0.1.0"
 description = "A living flower cursor for Kitty"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "pillow>=11.3",
 ]
@@ -29,7 +29,7 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 100
 
 [tool.ruff.lint]
