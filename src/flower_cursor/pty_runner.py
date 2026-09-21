@@ -47,8 +47,15 @@ def _sync_window_size(master_fd: int, stdin_fd: int) -> None:
     and ws_ypixel leaves the child believing the terminal cannot report pixel
     geometry, which is how a child learns its cell size - without it `icat` and
     every other image-capable program refuses to draw.
+
+    A size we cannot read is not worth dying over: stdin is a pipe under a
+    test harness or a `<<<` redirect, and the child then keeps the PTY's own
+    default size rather than losing its window.
     """
-    size = fcntl.ioctl(stdin_fd, termios.TIOCGWINSZ, _WINSIZE_ZERO)
+    try:
+        size = fcntl.ioctl(stdin_fd, termios.TIOCGWINSZ, _WINSIZE_ZERO)
+    except OSError:
+        return
     fcntl.ioctl(master_fd, termios.TIOCSWINSZ, size)
 
 
