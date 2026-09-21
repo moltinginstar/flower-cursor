@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
-import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from .manifest import manifest_data
+
+# The default flower was authored before there were species, under the name
+# "coral" and with six petals shed in a hand-picked order. Its manifest,
+# assets/layered/manifest.json, still carries neither a `species` key nor
+# `shedding_groups`, so these two are what it resolves to - they are the
+# default anemone's actual behaviour, not a compatibility shim for someone
+# else's old file. Deleting them changes what the default cursor does.
 LEGACY_CORAL_SPECIES = "coral"
 LEGACY_CORAL_SHEDDING_ORDER = (1, 4, 0, 5, 2, 3)
 
@@ -30,9 +37,7 @@ class SpeciesMetadata:
 def load_species_metadata(
     manifest_path: Path, *, selected_species: str | None = None
 ) -> SpeciesMetadata:
-    return metadata_from_manifest(
-        json.loads(manifest_path.read_text()), selected_species=selected_species
-    )
+    return metadata_from_manifest(manifest_data(manifest_path), selected_species=selected_species)
 
 
 def metadata_from_manifest(

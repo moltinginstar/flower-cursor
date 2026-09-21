@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import math
 from bisect import bisect_right
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from .easing import clamp01
 from .lifecycle import FlowerPose
+from .manifest import manifest_data
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +56,7 @@ class PoseLibrary:
 
     @classmethod
     def _from_manifest_uncached(cls, manifest_path: Path) -> PoseLibrary:
-        data = json.loads(manifest_path.read_text())
+        data = manifest_data(manifest_path)
         assets = tuple(
             PoseAsset(
                 name=item["name"],
@@ -106,7 +107,7 @@ class PoseLibrary:
 
     def sample_animated(self, pose: FlowerPose) -> tuple[tuple[PoseAsset, float], ...]:
         """Blend into a phase-linear idle ring as the biological state settles."""
-        progress = max(0.0, min(1.0, (min(pose.stem, pose.bloom, pose.vitality) - 0.95) / 0.045))
+        progress = clamp01((min(pose.stem, pose.bloom, pose.vitality) - 0.95) / 0.045)
         if progress == 0 or len(self._idle_assets) < 2:
             return self.sample(pose)
         phase = pose.idle_phase % math.tau
@@ -129,7 +130,7 @@ class PoseLibrary:
         return tuple(weights.items())
 
     def _ranked(self, pose: FlowerPose) -> list[tuple[float, PoseAsset]]:
-        mature_factor = max(0.0, min(1.0, (pose.bloom - 0.95) / 0.05)) * max(
+        mature_factor = clamp01((pose.bloom - 0.95) / 0.05) * max(
             0.0, min(1.0, (pose.vitality - 0.95) / 0.05)
         )
 
