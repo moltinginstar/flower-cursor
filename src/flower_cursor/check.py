@@ -19,11 +19,56 @@ import subprocess
 import sys
 from pathlib import Path
 
+from .settings import (
+    BUZZ_VARIABLE,
+    FLOWER_CATALOGUE,
+    FLOWER_MANIFESTS,
+    SPECIES_VARIABLE,
+    buzz_volume,
+)
+
 # The same settings `install.sh` writes, so the report describes the install
-# the user actually performed rather than an idealised one.
+# the user actually performed rather than an idealised one. A test holds these
+# to the ones in `install.sh`, which is the copy that does the writing.
 BEGIN_MARKER = "# >>> flower-cursor >>>"
 END_MARKER = "# <<< flower-cursor <<<"
-LAUNCHER = Path(__file__).resolve().parent.parent.parent / "kitty" / "flower-cursor-shell"
+LAUNCHER_NAME = "flower-cursor-shell"
+# Where install.sh puts a checkout when it was not run from one.
+_DEFAULT_INSTALL = Path("~/.local/share/flower-cursor")
+# A checkout's own launcher, beside the package rather than inside it. A wheel
+# installed into site-packages has no such sibling, which is why this is one
+# candidate and not the answer.
+_CHECKOUT_LAUNCHER = Path(__file__).resolve().parents[2] / "kitty" / LAUNCHER_NAME
+
+
+def install_directory() -> Path:
+    """The directory `install.sh` would keep the checkout in."""
+    override = os.environ.get("FLOWER_CURSOR_DIR")
+    if override:
+        return Path(override)
+    data = os.environ.get("XDG_DATA_HOME")
+    if data:
+        return Path(data) / "flower-cursor"
+    return _DEFAULT_INSTALL.expanduser()
+
+
+def launcher_path() -> Path | None:
+    """The launcher Kitty would run, wherever this copy was installed from.
+
+    A checkout keeps it beside the package; `install.sh` clones one into the
+    data directory; and a `pip install` has no launcher at all, only the
+    `flower-cursor` entry point, which is what the last candidate finds.
+    """
+    candidates = [
+        _CHECKOUT_LAUNCHER,
+        install_directory() / "kitty" / LAUNCHER_NAME,
+    ]
+    for name in (LAUNCHER_NAME, "flower-cursor"):
+        found = shutil.which(name)
+        if found is not None:
+            candidates.append(Path(found))
+    return next((candidate for candidate in candidates if candidate.exists()), None)
+
 
 _OK = "ok"
 _WARN = "warn"
@@ -58,12 +103,17 @@ def _kitty_version() -> str | None:
     return result.stdout.strip() or None
 
 
-def _configured_block(config: Path) -> str | None:
-    """The settings between our markers, or None if they are not there."""
+def _read_config(config: Path) -> str:
+    """The Kitty config as text, or empty if there is nothing to read."""
     try:
-        lines = config.read_text(encoding="utf-8", errors="replace").splitlines()
+        return config.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return None
+        return ""
+
+
+def _configured_block(text: str) -> str | None:
+    """The settings between our markers, or None if they are not there."""
+    lines = text.splitlines()
     try:
         start = lines.index(BEGIN_MARKER)
         end = lines.index(END_MARKER)
@@ -74,26 +124,20 @@ def _configured_block(config: Path) -> str | None:
     return "\n".join(lines[start + 1 : end])
 
 
-def _unmanaged_shell(config: Path) -> str | None:
+def _unmanaged_shell(text: str) -> str | None:
     """A `shell` line pointing at our launcher that we did not write."""
-    try:
-        text = config.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped.startswith("shell "):
             continue
         # The launcher can live anywhere a user put it, so recognise it by
         # name rather than by the path this copy happens to sit at.
-        if LAUNCHER.name in stripped:
+        if LAUNCHER_NAME in stripped:
             return stripped
     return None
 
 
 def _environment_lines() -> list[tuple[str, str, str]]:
-    from .observer import BUZZ_VARIABLE, FLOWER_MANIFESTS, SPECIES_VARIABLE, buzz_volume
-
     lines = []
     species = os.environ.get(SPECIES_VARIABLE)
     if species is None:
@@ -122,8 +166,6 @@ def _environment_lines() -> list[tuple[str, str, str]]:
 
 def report() -> tuple[list[tuple[str, str, str]], bool]:
     """Every check, and whether anything in it stops flowers growing."""
-    from .observer import FLOWER_CATALOGUE
-
     lines: list[tuple[str, str, str]] = []
 
     version = _kitty_version()
@@ -138,12 +180,15 @@ def report() -> tuple[list[tuple[str, str, str]], bool]:
 
     lines.append((_OK, "python", sys.version.split()[0]))
 
-    if not LAUNCHER.exists():
-        lines.append((_BAD, "launcher", f"{LAUNCHER} is missing"))
-    elif not os.access(LAUNCHER, os.X_OK):
-        lines.append((_BAD, "launcher", f"{LAUNCHER} is not executable"))
+    launcher = launcher_path()
+    if launcher is None:
+        lines.append(
+            (_BAD, "launcher", f"no {LAUNCHER_NAME} in a checkout, {install_directory()} or PATH")
+        )
+    elif not os.access(launcher, os.X_OK):
+        lines.append((_BAD, "launcher", f"{launcher} is not executable"))
     else:
-        lines.append((_OK, "launcher", str(LAUNCHER)))
+        lines.append((_OK, "launcher", str(launcher)))
 
     missing = [flower.name for flower in FLOWER_CATALOGUE if not flower.manifest.exists()]
     if missing:
@@ -152,12 +197,13 @@ def report() -> tuple[list[tuple[str, str, str]], bool]:
         lines.append((_OK, "flowers", f"{len(FLOWER_CATALOGUE)} installed"))
 
     config = kitty_config_path()
-    block = _configured_block(config)
+    text = _read_config(config)
+    block = _configured_block(text)
     if block is None:
         # A config written by hand is a real install and has to read as one:
         # `install.sh` only owns the block it marked, and plenty of people will
         # have added the `shell` line themselves.
-        shell = _unmanaged_shell(config)
+        shell = _unmanaged_shell(text)
         if shell is not None:
             lines.append((_OK, "kitty.conf", f"{shell} (set by hand, not by install.sh)"))
         else:
