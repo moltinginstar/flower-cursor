@@ -164,6 +164,9 @@ def test_renderer_frees_removed_images_and_cleanup_is_idempotent(clear: bool) ->
     [
         b"\x1b[2J",
         b"\x1b[3J",
+        # ED 22 and the `?`-marked DECSED reach the same grman_clear.
+        b"\x1b[22J",
+        b"\x1b[?2J",
         b"\x1bc",
         b"\x1b[?47h",
         b"\x1b[?47l",
@@ -283,3 +286,87 @@ def test_left_edge_crops_image_without_shifting_the_root() -> None:
     assert abs(runtime.pose_library.root_anchor[0] * 72 - cropped) <= 0.5
     assert int(parameters["X"]) == 0
     assert b"\x1b[4;1H" in output
+
+
+def test_two_renderers_in_one_window_do_not_share_image_ids() -> None:
+    """Nested wrappers draw into the same id namespace, so bases must differ."""
+    runtime = FlowerCursorRuntime()
+    runtime.move_to(A)
+    runtime.update(0.35)
+
+    bases = set()
+    for _ in range(8):
+        writes: list[bytes] = []
+        FlowerRenderer(runtime.pose_library, writes.append).render(runtime.visuals(), A)
+        bases.add(int(commands(b"".join(writes))[0][0]["i"]))
+
+    assert len(bases) == 8
+    # Low ids are what a program picks when it assumes it owns the window.
+    assert min(bases) > 0xFFFF
+
+
+def _copies(count: int):
+    """One flower's visual stamped at many cells, as the copies path produces."""
+    runtime = FlowerCursorRuntime()
+    runtime.move_to(A)
+    runtime.update(0.35)
+    source = runtime.visuals()[0]
+    return tuple(
+        replace(
+            source,
+            identifier=index + 1,
+            cell=CursorCell(row=2 + index, column=10),
+            appearance="one-flower",
+        )
+        for index in range(count)
+    )
+
+
+def test_copies_of_one_flower_are_transmitted_once_and_placed_many_times() -> None:
+    written: list[bytes] = []
+    renderer = FlowerRenderer(PoseLibrary.default(), written.append)
+    renderer.render(_copies(40), CursorCell(row=2, column=10))
+    output = b"".join(written)
+    assert output.count(b"a=t,") == 1
+    assert output.count(b"a=T,") == 0
+    assert output.count(b"a=p,") == 40
+    # The whole frame stays far below what 40 separate transmissions would cost.
+    assert len(output) < 40_000, len(output)
+
+
+def test_a_copied_frame_replaces_itself_without_erasing_its_other_copies() -> None:
+    written: list[bytes] = []
+    renderer = FlowerRenderer(PoseLibrary.default(), written.append)
+    renderer.render(_copies(5), CursorCell(row=2, column=10))
+    written.clear()
+    moved = tuple(
+        replace(visual, cell=CursorCell(row=visual.cell.row, column=11)) for visual in _copies(5)
+    )
+    renderer.render(moved, CursorCell(row=2, column=11))
+    output = b"".join(written)
+    # Moving the copies re-places them; nothing frees the image they share.
+    assert b"d=I" not in output
+    assert output.count(b"a=p,") == 5
+
+
+def test_dropping_the_copies_frees_the_image_they_shared() -> None:
+    written: list[bytes] = []
+    renderer = FlowerRenderer(PoseLibrary.default(), written.append)
+    renderer.render(_copies(5), CursorCell(row=2, column=10))
+    written.clear()
+    renderer.render((), CursorCell(row=2, column=10))
+    assert b"d=I" in b"".join(written)
+
+
+def test_clearing_returns_the_shared_image_ids_for_reuse() -> None:
+    """A cleared screen must not strand the ids its copies held.
+
+    Bases are drawn from a bounded span, so leaking one per clear would
+    eventually wrap the allocator onto ids still in use.
+    """
+    renderer = FlowerRenderer(PoseLibrary.default(), lambda data: None)
+    for _ in range(3):
+        renderer.render(_copies(5), CursorCell(row=2, column=10))
+        renderer.clear()
+    assert renderer._image_bases == {}
+    assert renderer._allocated_bases == 1

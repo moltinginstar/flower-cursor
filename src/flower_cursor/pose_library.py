@@ -6,6 +6,7 @@ import json
 import math
 from bisect import bisect_right
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from .lifecycle import FlowerPose
@@ -48,6 +49,12 @@ class PoseLibrary:
 
     @classmethod
     def from_manifest(cls, manifest_path: Path) -> PoseLibrary:
+        # A library is immutable once built, and one runtime per cursor would
+        # otherwise reparse the manifest for every cursor on screen.
+        return _load_manifest(cls, manifest_path)
+
+    @classmethod
+    def _from_manifest_uncached(cls, manifest_path: Path) -> PoseLibrary:
         data = json.loads(manifest_path.read_text())
         assets = tuple(
             PoseAsset(
@@ -161,3 +168,8 @@ class PoseLibrary:
             return score_value
 
         return sorted(((score(asset), asset) for asset in self._assets), key=lambda item: item[0])
+
+
+@lru_cache(maxsize=8)
+def _load_manifest(cls: type[PoseLibrary], manifest_path: Path) -> PoseLibrary:
+    return cls._from_manifest_uncached(manifest_path)

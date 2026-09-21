@@ -46,8 +46,9 @@ def test_bundled_runtime_renders_outside_the_checkout(monkeypatch, tmp_path):
     assert compositor.frame(runtime.visuals()[0]).getchannel("A").getbbox() is not None
 
 
-@pytest.mark.parametrize("args", [[], ["--render"],
-                                  ["--shedding-manifest", str(observer.DEFAULT_MANIFEST)]])
+@pytest.mark.parametrize(
+    "args", [[], ["--render"], ["--shedding-manifest", str(observer.DEFAULT_MANIFEST)]]
+)
 def test_observer_rendering_defaults_and_manifest_override(monkeypatch, args):
     created = []
     original = layered.LayeredRuntime

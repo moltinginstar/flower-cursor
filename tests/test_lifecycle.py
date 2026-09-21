@@ -45,7 +45,9 @@ def test_withering_preserves_pose_momentum_and_grown_tissue(warmup: float) -> No
     assert flower.active is False
     assert flower.pose == interrupted
     assert velocities == (
-        flower._stem.velocity, flower._bloom.velocity, flower._maturity.velocity,
+        flower._stem.velocity,
+        flower._bloom.velocity,
+        flower._maturity.velocity,
     )
     advance(lifecycle, 0.6)
     assert flower.pose.stem >= interrupted.stem
@@ -85,7 +87,8 @@ def test_exit_folds_before_retracting_without_an_opacity_fade() -> None:
 @pytest.mark.parametrize("warmup", [0.25, 0.55, 2.0])
 @pytest.mark.parametrize("departure", [0.1, 0.5, 0.9, 0.95])
 def test_returning_reverses_same_flower_without_resetting_state(
-    warmup: float, departure: float,
+    warmup: float,
+    departure: float,
 ) -> None:
     lifecycle = FlowerLifecycle()
     flower = lifecycle.move_to(A)

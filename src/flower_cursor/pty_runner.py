@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import fcntl
 import math
 import os
 import pty
 import selectors
 import signal
+import struct
 import sys
 import termios
 import time
@@ -18,8 +20,14 @@ from .cursor_report import CursorReportParser
 from .cursor_visibility import CURSOR_HIDE, CURSOR_SHOW, CursorVisibilityFilter
 from .lifecycle import CursorCell
 from .output_arbiter import OutputArbiter
+from .vt_framer import DeviceStatusQuery, Event
 
-_CPR_QUERY = b"\x1b[6n"
+# DECXCPR. Kitty answers it with a `?`-marked reply, which keeps our polling
+# apart from an application's own DSR conversation instead of stealing it.
+_CPR_QUERY = b"\x1b[?6n"
+_CPR_PARAMETER = 6
+# struct winsize: ws_row, ws_col, ws_xpixel, ws_ypixel
+_WINSIZE_ZERO = struct.pack("HHHH", 0, 0, 0, 0)
 
 
 def _write_all(fd: int, data: bytes) -> None:
@@ -29,7 +37,15 @@ def _write_all(fd: int, data: bytes) -> None:
 
 
 def _sync_window_size(master_fd: int, stdin_fd: int) -> None:
-    termios.tcsetwinsize(master_fd, termios.tcgetwinsize(stdin_fd))
+    """Copy the window size to the child, pixel dimensions included.
+
+    `termios.tcgetwinsize` reports only rows and columns. Dropping ws_xpixel
+    and ws_ypixel leaves the child believing the terminal cannot report pixel
+    geometry, which is how a child learns its cell size - without it `icat` and
+    every other image-capable program refuses to draw.
+    """
+    size = fcntl.ioctl(stdin_fd, termios.TIOCGWINSZ, _WINSIZE_ZERO)
+    fcntl.ioctl(master_fd, termios.TIOCSWINSZ, size)
 
 
 def _terminate_child(child_pid: int) -> None:
@@ -47,6 +63,7 @@ def run(
     on_close: Callable[[], None] | None = None,
     on_output: Callable[[bytes], bool | None] | None = None,
     output_arbiter: OutputArbiter | None = None,
+    stdin_filter: Callable[[bytes], bytes] | None = None,
     query_interval: float = 1 / 30,
     tick_interval: float = 1 / 60,
     hide_cursor: bool = False,
@@ -73,7 +90,6 @@ def run(
     selector = selectors.DefaultSelector()
     cursor_queries: deque[int | None] = deque()
     cursor_generation = 0
-    child_output_tail = b""
     cursor_visibility = CursorVisibilityFilter() if hide_cursor else None
     resize_pending = True
     now = time.monotonic()
@@ -86,6 +102,14 @@ def run(
         nonlocal resize_pending
         resize_pending = True
 
+    def on_child_sequence(event: Event) -> None:
+        # The child can ask for a DECXCPR report too; its reply is marked the
+        # same way ours is, so claim only as many replies as we asked for.
+        if isinstance(event, DeviceStatusQuery):
+            if event.private and event.parameter == _CPR_PARAMETER:
+                cursor_queries.append(None)
+
+    output_arbiter.add_listener(on_child_sequence)
     signal.signal(signal.SIGWINCH, request_resize)
     try:
         tty.setraw(stdin_fd, termios.TCSAFLUSH)
@@ -113,6 +137,8 @@ def run(
                         _, status = os.waitpid(child_pid, 0)
                         return os.waitstatus_to_exitcode(status)
                     passthrough, reports = parser.feed(data)
+                    if stdin_filter is not None:
+                        passthrough = stdin_filter(passthrough)
                     if passthrough:
                         _write_all(master_fd, passthrough)
                     for report in reports:
@@ -138,9 +164,6 @@ def run(
                         output_arbiter.feed_child(data)
                         if on_output is not None and on_output(data):
                             cursor_generation += 1
-                    child_output = child_output_tail + raw_data
-                    cursor_queries.extend(None for _ in range(child_output.count(_CPR_QUERY)))
-                    child_output_tail = child_output[-len(_CPR_QUERY) + 1 :]
 
             if resize_pending:
                 _sync_window_size(master_fd, stdin_fd)

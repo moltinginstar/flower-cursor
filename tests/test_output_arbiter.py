@@ -8,6 +8,7 @@ from PIL import Image
 
 from flower_cursor.kitty_graphics import place_image, transmit_png
 from flower_cursor.output_arbiter import OutputArbiter
+from flower_cursor.vt_framer import AltScreenChange, DeviceStatusQuery
 
 
 def _png() -> bytes:
@@ -17,7 +18,7 @@ def _png() -> bytes:
 
 
 def test_naive_chunk_forwarding_corrupts_a_split_graphics_command() -> None:
-    child = transmit_png(_png())
+    child = transmit_png(_png(), image_id=3)
     flower = place_image(image_id=7, placement_id=7, columns=1, rows=1)
     split = child.index(b";") + 8
     interleaved = child[:split] + flower + child[split:]
@@ -29,7 +30,7 @@ def test_naive_chunk_forwarding_corrupts_a_split_graphics_command() -> None:
 
 
 def test_split_boundaries_preserve_a_complete_graphics_command() -> None:
-    child = transmit_png(_png())
+    child = transmit_png(_png(), image_id=3)
 
     for split in range(len(child) + 1):
         writes: list[bytes] = []
@@ -38,35 +39,64 @@ def test_split_boundaries_preserve_a_complete_graphics_command() -> None:
         arbiter.feed_child(child[split:])
 
         assert b"".join(writes) == child
-        assert arbiter.can_write
 
 
-def test_multipart_transfer_blocks_external_output_until_final_chunk() -> None:
+def test_child_output_is_forwarded_immediately_rather_than_buffered() -> None:
+    writes: list[bytes] = []
+    arbiter = OutputArbiter(writes.append)
+
+    arbiter.feed_child(b"\x1b_Ga=T,f=100;AAAA")
+
+    assert writes == [b"\x1b_Ga=T,f=100;AAAA"]
+    assert not arbiter.can_write
+
+
+@pytest.mark.parametrize(
+    "partial",
+    [
+        b"\x1b[31",  # mid-CSI
+        b"\x1b",  # a bare escape
+        b"\x1b]52;c;aGVsbG8",  # mid-OSC
+        b"\x1bP+q544",  # mid-DCS
+        b"\xf0\x9f\x8c",  # mid-UTF-8 character
+        b"\x1b_Ga=T,f=100;AAAA",  # mid-APC
+    ],
+)
+def test_writes_are_refused_in_the_middle_of_any_sequence(partial: bytes) -> None:
+    writes: list[bytes] = []
+    arbiter = OutputArbiter(writes.append)
+    arbiter.feed_child(partial)
+
+    assert not arbiter.can_write
+    with pytest.raises(RuntimeError, match="middle of a child escape sequence"):
+        arbiter.write(b"flower")
+    assert writes == [partial]
+
+
+def test_multipart_transfer_blocks_renderer_output_until_the_final_chunk() -> None:
     child_chunks: list[bytes] = []
-    transmit_png(b"x" * 4096, write=child_chunks.append)
+    transmit_png(b"x" * 4096, image_id=3, write=child_chunks.append)
     assert len(child_chunks) == 2
     writes: list[bytes] = []
     arbiter = OutputArbiter(writes.append)
 
     arbiter.feed_child(child_chunks[0])
-    assert writes == [child_chunks[0]]
     assert not arbiter.can_write
-    with pytest.raises(RuntimeError, match="incomplete"):
+    with pytest.raises(RuntimeError):
         arbiter.write(b"flower")
 
     arbiter.feed_child(child_chunks[1][:3])
-    assert writes == [child_chunks[0]]
     arbiter.feed_child(child_chunks[1][3:])
 
     assert b"".join(writes) == b"".join(child_chunks)
     assert arbiter.can_write
 
 
-def test_complete_multipart_chunks_stream_without_aggregate_buffering() -> None:
+def test_long_multipart_transfers_stream_without_aggregate_buffering() -> None:
     child_chunks: list[bytes] = []
-    transmit_png(b"x" * 10000, write=child_chunks.append)
+    transmit_png(b"x" * 10000, image_id=3, write=child_chunks.append)
     writes: list[bytes] = []
-    arbiter = OutputArbiter(writes.append, max_buffered_bytes=16)
+    arbiter = OutputArbiter(writes.append)
 
     for chunk in child_chunks[:-1]:
         arbiter.feed_child(chunk)
@@ -78,74 +108,9 @@ def test_complete_multipart_chunks_stream_without_aggregate_buffering() -> None:
     assert arbiter.can_write
 
 
-def test_incomplete_graphics_timeout_releases_the_output_lock() -> None:
-    now = [0.0]
-    writes: list[bytes] = []
-    arbiter = OutputArbiter(writes.append, incomplete_timeout=0.25, clock=lambda: now[0])
-    partial = b"\x1b_Ga=T,f=100;AAAA"
-
-    arbiter.feed_child(partial)
-    assert not arbiter.can_write
-    now[0] = 0.25
-    arbiter.poll()
-
-    assert b"".join(writes) == partial + b"\x1b\\"
-    assert arbiter.can_write
-
-
-def test_completed_partial_command_resets_timeout_for_the_next_command() -> None:
-    now = [0.0]
-    writes: list[bytes] = []
-    arbiter = OutputArbiter(writes.append, incomplete_timeout=0.25, clock=lambda: now[0])
-    command = b"\x1b_Ga=T,f=100;AAAA\x1b\\"
-
-    arbiter.feed_child(command[:-2])
-    now[0] = 0.1
-    arbiter.feed_child(command[-2:])
-    assert arbiter.can_write
-
-    now[0] = 1.0
-    next_partial = b"\x1b_Ga=T,f=100;BBBB"
-    arbiter.feed_child(next_partial)
-    arbiter.poll()
-
-    assert not arbiter.can_write
-    assert b"".join(writes) == command
-
-
-@pytest.mark.parametrize("next_partial", [b"\x1b_Ga=T,f=100;BBBB", b"\x1b"])
-def test_coalesced_command_boundary_starts_a_fresh_timeout(next_partial) -> None:
-    now = [0.0]
-    writes: list[bytes] = []
-    arbiter = OutputArbiter(writes.append, clock=lambda: now[0])
-    command = b"\x1b_Ga=T,f=100;AAAA\x1b\\"
-    arbiter.feed_child(command[:-2])
-    now[0] = 0.24
-    arbiter.feed_child(command[-2:] + next_partial)
-    now[0] = 0.26
-    arbiter.poll()
-    assert not arbiter.can_write
-    assert arbiter.recovery_deadline == pytest.approx(0.49)
-    assert b"".join(writes) == command
-
-
-def test_completed_plain_escape_prefix_does_not_age_the_next_prefix() -> None:
-    now = [0.0]
-    writes: list[bytes] = []
-    arbiter = OutputArbiter(writes.append, clock=lambda: now[0])
-    arbiter.feed_child(b"\x1b")
-    now[0] = 0.24
-    arbiter.feed_child(b"[6n\x1b")
-    now[0] = 0.26
-    arbiter.poll()
-    assert not arbiter.can_write
-    assert arbiter.recovery_deadline == pytest.approx(0.49)
-    assert b"".join(writes) == b"\x1b[6n"
-
-
 def test_child_queries_and_text_stream_between_multipart_chunks() -> None:
     chunks: list[bytes] = []
-    transmit_png(b"x" * 10000, write=chunks.append)
+    transmit_png(b"x" * 10000, image_id=3, write=chunks.append)
     query = b"status\x1b[6n"
     for split in range(len(query) + 1):
         writes: list[bytes] = []
@@ -161,42 +126,74 @@ def test_child_queries_and_text_stream_between_multipart_chunks() -> None:
         assert arbiter.can_write
 
 
-def test_prefix_to_multipart_transition_uses_a_fresh_timeout() -> None:
+def test_a_slow_transfer_is_never_truncated() -> None:
     now = [0.0]
     writes: list[bytes] = []
-    arbiter = OutputArbiter(writes.append, incomplete_timeout=0.25, clock=lambda: now[0])
-
-    arbiter.feed_child(b"\x1b")
-    now[0] = 0.2
-    arbiter.feed_child(b"_Gm=1;AAAA\x1b\\")
-    now[0] = 0.3
-    arbiter.poll()
-
-    assert not arbiter.can_write
-    assert writes == [b"\x1b_Gm=1;AAAA\x1b\\"]
-
-
-def test_buffer_limit_releases_an_unbounded_incomplete_stream() -> None:
-    writes: list[bytes] = []
-    arbiter = OutputArbiter(writes.append, max_buffered_bytes=16, incomplete_timeout=10)
-    partial = b"\x1b_Ga=T,f=100;" + b"x" * 32
-
+    arbiter = OutputArbiter(writes.append, clock=lambda: now[0])
+    partial = b"\x1b_Ga=T,f=100;AAAA"
     arbiter.feed_child(partial)
 
-    assert b"".join(writes) == partial + b"\x1b\\"
-    assert arbiter.can_write
-
-
-def test_multipart_timeout_sends_a_bounded_recovery_final_chunk() -> None:
-    child_chunks: list[bytes] = []
-    transmit_png(b"x" * 4096, write=child_chunks.append)
-    now = [0.0]
-    writes: list[bytes] = []
-    arbiter = OutputArbiter(writes.append, incomplete_timeout=0.25, clock=lambda: now[0])
-
-    arbiter.feed_child(child_chunks[0])
-    now[0] = 0.25
+    now[0] = 600.0
     arbiter.poll()
 
-    assert writes == [child_chunks[0], b"\x1b_Gm=0,q=2;\x1b\\"]
+    # The upload is still open, so nothing was invented to close it.
+    assert b"".join(writes) == partial
+
+
+def test_an_unfinished_upload_is_abandoned_silently_after_the_timeout() -> None:
+    now = [0.0]
+    writes: list[bytes] = []
+    arbiter = OutputArbiter(writes.append, stuck_transfer_timeout=5.0, clock=lambda: now[0])
+    chunk = b"\x1b_Ga=T,f=100,m=1;AAAA\x1b\\"
+    arbiter.feed_child(chunk)
+
+    assert arbiter.recovery_deadline == pytest.approx(5.0)
+    assert not arbiter.can_write
+    now[0] = 5.0
+    arbiter.poll()
+
     assert arbiter.can_write
+    assert writes == [chunk]
+
+
+def test_an_incomplete_sequence_has_no_recovery_deadline() -> None:
+    arbiter = OutputArbiter(lambda data: None)
+    arbiter.feed_child(b"\x1b[31")
+
+    # Nothing but the rest of the sequence can make this writable.
+    assert arbiter.recovery_deadline is None
+    arbiter.poll()
+    assert not arbiter.can_write
+
+
+def test_finish_child_cancels_a_sequence_the_child_never_completed() -> None:
+    writes: list[bytes] = []
+    arbiter = OutputArbiter(writes.append)
+    arbiter.feed_child(b"\x1b[31")
+
+    arbiter.finish_child()
+
+    assert writes == [b"\x1b[31", b"\x18"]
+    assert arbiter.can_write
+
+
+def test_finish_child_writes_nothing_when_the_stream_is_already_clean() -> None:
+    writes: list[bytes] = []
+    arbiter = OutputArbiter(writes.append)
+    arbiter.feed_child(b"done\r\n")
+
+    arbiter.finish_child()
+
+    assert writes == [b"done\r\n"]
+
+
+def test_stream_events_reach_the_runtime() -> None:
+    events: list[object] = []
+    arbiter = OutputArbiter(lambda data: None, on_event=events.append)
+
+    arbiter.feed_child(b"\x1b[?1049h\x1b[6n")
+
+    assert events == [
+        AltScreenChange(active=True),
+        DeviceStatusQuery(parameter=6, private=False),
+    ]

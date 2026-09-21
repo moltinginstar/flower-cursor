@@ -13,6 +13,8 @@ from pathlib import Path
 
 from .graphics_renderer import FlowerRenderer
 from .lifecycle import CursorCell
+from .multi_cursor import MultiCursorReplyFilter, MultiCursorTracker
+from .multi_runtime import DEFAULT_INDEPENDENT_LIMIT, MultiCursorFlowers
 from .output_arbiter import OutputArbiter
 from .pty_runner import run
 
@@ -42,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--shedding-manifest", type=Path, help="override the bundled layered flower assets"
     )
+    parser.add_argument(
+        "--independent-cursors",
+        type=int,
+        default=DEFAULT_INDEPENDENT_LIMIT,
+        help="how many declared cursors get their own flower before copies are used",
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
 
@@ -63,9 +71,11 @@ def main(argv: list[str] | None = None) -> int:
 
         runtime = LayeredRuntime(manifest)
         compositor = LayeredCompositor(manifest)
+        flowers = MultiCursorFlowers(manifest, independent_limit=args.independent_cursors)
     else:
         runtime = None
         compositor = None
+        flowers = None
     output = sys.stdout.buffer
 
     def write_output(data: bytes) -> None:
@@ -73,6 +83,12 @@ def main(argv: list[str] | None = None) -> int:
         output.flush()
 
     output_arbiter = OutputArbiter(write_output)
+    # Kitty draws the cursors an application declares and offers no way to hide
+    # them, so we track them, clear Kitty's copy each tick, and answer the state
+    # query from our own record.
+    tracker = MultiCursorTracker()
+    output_arbiter.add_listener(tracker.handle)
+    reply_filter = MultiCursorReplyFilter(tracker)
     renderer = (
         FlowerRenderer(
             runtime.pose_library,
@@ -87,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     def on_cursor(cell: CursorCell) -> None:
         nonlocal current_cell, previous
         current_cell = cell
+        tracker.main_cursor = cell
         if runtime is not None:
             runtime.move_to(cell)
         if cell == previous:
@@ -102,23 +119,35 @@ def main(argv: list[str] | None = None) -> int:
             current_cell = previous = None
             if runtime is not None:
                 runtime.reset()
+            if flowers is not None:
+                flowers.reset()
             return True
         return False
 
     def on_tick(duration: float) -> None:
         if renderer is not None:
             renderer.flush_pending()
+        suppression = tracker.take_suppression()
+        if suppression:
+            output_arbiter.write(suppression)
         if runtime is not None and renderer is not None and current_cell is not None:
-            runtime.update(duration)
             rows, columns, width, height = struct.unpack(
                 "HHHH", fcntl.ioctl(output.fileno(), termios.TIOCGWINSZ, b"\0" * 8)
             )
+            if rows and columns:
+                tracker.screen_size = (rows, columns)
+            runtime.update(duration)
             cell_size = (
                 (width // columns, height // rows)
                 if rows and columns and width and height
                 else None
             )
-            renderer.render(runtime.visuals(), current_cell, duration, cell_size)
+            visuals = runtime.visuals()
+            if flowers is not None:
+                flowers.update(tracker.cells, duration)
+                stamp = runtime.active.flower.identifier if runtime.active is not None else None
+                visuals = flowers.visuals(visuals, stamp)
+            renderer.render(visuals, current_cell, duration, cell_size)
             output.flush()
 
     def close_graphics() -> None:
@@ -134,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
             on_close=close_graphics if renderer is not None else None,
             on_output=on_output if renderer is not None else None,
             output_arbiter=output_arbiter,
+            stdin_filter=reply_filter.feed,
             query_interval=args.interval,
             tick_interval=args.render_interval,
             hide_cursor=renderer is not None,

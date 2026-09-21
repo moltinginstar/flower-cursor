@@ -7,7 +7,9 @@ from dataclasses import dataclass
 
 from .lifecycle import CursorCell
 
-_CPR = re.compile(rb"\x1b\[(\d+);(\d+)R")
+# DECXCPR (CSI ? 6 n) replies carry a `?` marker that a plain DSR reply does
+# not, so an application's own CSI r;c R reply can be left alone entirely.
+_CPR = re.compile(rb"\x1b\[\?(\d+);(\d+)R")
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,18 +19,18 @@ class CursorReport:
 
 
 def _is_cpr_prefix(value: bytes) -> bool:
-    if value == b"\x1b":
+    if value in (b"\x1b", b"\x1b["):
         return True
-    if not value.startswith(b"\x1b["):
+    if not value.startswith(b"\x1b[?"):
         return False
-    body = value[2:]
-    if not body or body.endswith(b"R") or body.count(b";") > 1:
+    body = value[3:]
+    if body.endswith(b"R") or body.count(b";") > 1:
         return False
     return all(byte == ord(";") or ord("0") <= byte <= ord("9") for byte in body)
 
 
 class CursorReportParser:
-    """Incrementally split CPR replies from bytes headed to the child PTY."""
+    """Incrementally split DECXCPR replies from bytes headed to the child PTY."""
 
     def __init__(self) -> None:
         self._pending = b""

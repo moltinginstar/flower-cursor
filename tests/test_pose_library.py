@@ -52,10 +52,19 @@ def test_atlas_covers_partial_exits_and_late_revivals() -> None:
     assert {f"mature_idle_{index:02d}" for index in range(24)}.issubset(names)
 
 
-@pytest.mark.parametrize("name", [
-    "bloom_13", "mature", "mature_idle_06", "wilt_20", "partial_13_12",
-    "revive_wilt_10", "revive_late_wilt_10", "revive_late_partial_22_10",
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "bloom_13",
+        "mature",
+        "mature_idle_06",
+        "wilt_20",
+        "partial_13_12",
+        "revive_wilt_10",
+        "revive_late_wilt_10",
+        "revive_late_partial_22_10",
+    ],
+)
 def test_exact_authored_state_selects_a_single_matching_sample(name: str) -> None:
     library = PoseLibrary.default()
     asset = next(asset for asset in library.assets if asset.name == name)
@@ -86,8 +95,9 @@ def test_interpolated_samples_have_positive_normalized_weights() -> None:
     assert samples[0][0] == library.select(pose)
 
 
-@pytest.mark.parametrize("phase, expected", [(0, 0), (math.pi / 4, 0.25),
-                                             (math.pi / 2, 0.5), (math.pi, 1)])
+@pytest.mark.parametrize(
+    "phase, expected", [(0, 0), (math.pi / 4, 0.25), (math.pi / 2, 0.5), (math.pi, 1)]
+)
 def test_animated_idle_interpolates_phase_without_exit_neighbors(phase, expected) -> None:
     left = PoseAsset("idle_00", 1, 1, 1, Path("left.png"), idle_phase=0)
     right = replace(left, name="idle_12", path=Path("right.png"), idle_phase=math.pi)

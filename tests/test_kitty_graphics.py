@@ -15,10 +15,10 @@ def test_transmit_png_uses_kitty_png_transport() -> None:
 
 def test_transmit_png_chunks_large_payloads() -> None:
     commands: list[bytes] = []
-    transmit_png(b"x" * 4096, write=commands.append)
+    transmit_png(b"x" * 4096, image_id=3, write=commands.append)
 
     assert len(commands) == 2
-    assert b"a=T,f=100,i=1,C=1,z=1,q=2,m=1;" in commands[0]
+    assert b"a=T,f=100,i=3,C=1,z=1,q=2,m=1;" in commands[0]
     assert commands[1].startswith(b"\x1b_Gm=0,q=2;")
     assert all(len(command.split(b";", 1)[1][:-2]) <= 4096 for command in commands)
 
@@ -39,10 +39,21 @@ def test_place_image_supports_multi_cell_offsets_and_foreground_z_index() -> Non
 
 def test_place_image_rejects_invalid_geometry() -> None:
     with pytest.raises(ValueError, match="positive"):
-        place_image(columns=0, rows=1)
+        place_image(image_id=3, columns=0, rows=1)
     with pytest.raises(ValueError, match="non-negative"):
-        place_image(columns=1, rows=1, x_offset=-1)
+        place_image(image_id=3, columns=1, rows=1, x_offset=-1)
 
 
 def test_delete_placement_targets_only_the_placement() -> None:
     assert delete_placement(image_id=7, placement_id=11) == b"\x1b_Ga=d,d=i,i=7,p=11,q=2;\x1b\\"
+
+
+def test_graphics_commands_require_a_deliberate_image_id() -> None:
+    """Defaulting to a low id would collide with any other program in the window."""
+    for call in (
+        lambda: transmit_png(b"png-bytes"),  # type: ignore[call-arg]
+        lambda: place_image(columns=1, rows=1),  # type: ignore[call-arg]
+        lambda: delete_placement(),  # type: ignore[call-arg]
+    ):
+        with pytest.raises(TypeError, match="image_id"):
+            call()
