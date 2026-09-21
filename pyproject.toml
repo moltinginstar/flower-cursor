@@ -8,9 +8,28 @@ version = "0.1.0"
 description = "A living flower cursor for Kitty"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = [
-    "pillow>=11.3",
+license = "MIT"
+license-files = ["LICENSE"]
+# The cursor is a PTY wrapper: it needs `pty`, `termios`, `tty`, `fcntl`,
+# `pwd` and process groups, none of which Windows has. Packaging metadata
+# cannot refuse an install outright, so the classifiers are what say so.
+classifiers = [
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Terminals :: Terminal Emulators/X Terminals",
 ]
+dependencies = [
+    # 11.x publishes no cp314 wheels, so the floor has to be a release that
+    # does or a fresh resolve can only satisfy it by building from source.
+    "pillow>=12.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/moltinginstar/flower-cursor"
+Source = "https://github.com/moltinginstar/flower-cursor"
 
 [project.optional-dependencies]
 # Wingbeat audio for the idle bee. Optional because the cursor is complete
@@ -25,8 +44,9 @@ packages = ["src/flower_cursor"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3",
-    "ruff>=0.11",
+    "pytest>=9.1",
+    # `target-version = "py314"` below needs a ruff that knows about 3.14.
+    "ruff>=0.16",
     # The same backend the `sound` extra installs, repeated because `uv run`
     # re-syncs the environment to the default set and uninstalls anything an
     # earlier `uv sync --extra sound` put there - so a checkout that wants to
