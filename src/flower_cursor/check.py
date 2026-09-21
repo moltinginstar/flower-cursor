@@ -1,0 +1,188 @@
+"""Report whether this machine is set up to grow flowers.
+
+Nothing here draws anything or talks to the terminal: it inspects the parts an
+install is made of - Kitty, the launcher, the flower assets and the settings
+that point at them - and says what it found. A window that stays flowerless
+usually has exactly one of these wrong, and reading it off a list beats
+guessing at it from an empty screen.
+
+What this deliberately does not do is claim the flowers will appear. Drawing
+them needs Kitty's graphics protocol over a real terminal, which a report run
+into a pipe cannot exercise, so nothing below is evidence about that.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+# The same settings `install.sh` writes, so the report describes the install
+# the user actually performed rather than an idealised one.
+BEGIN_MARKER = "# >>> flower-cursor >>>"
+END_MARKER = "# <<< flower-cursor <<<"
+LAUNCHER = Path(__file__).resolve().parent.parent.parent / "kitty" / "flower-cursor-shell"
+
+_OK = "ok"
+_WARN = "warn"
+_BAD = "bad"
+_MARKS = {_OK: "+", _WARN: "!", _BAD: "x"}
+
+
+def kitty_config_path() -> Path:
+    directory = os.environ.get("KITTY_CONFIG_DIRECTORY")
+    if directory:
+        return Path(directory) / "kitty.conf"
+    base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
+    return Path(base) / "kitty" / "kitty.conf"
+
+
+def _kitty_version() -> str | None:
+    """Kitty's version, or None if it is not installed or will not say.
+
+    Kitty is usually on PATH, but a macOS user who dragged the app into
+    /Applications may not have run its `kitty +runpy` linking step, so a
+    missing binary is worth reporting without being certain it means absence.
+    """
+    binary = shutil.which("kitty")
+    if binary is None:
+        return None
+    try:
+        result = subprocess.run(
+            [binary, "--version"], capture_output=True, text=True, timeout=10, check=False
+        )
+    except OSError, subprocess.SubprocessError:
+        return None
+    return result.stdout.strip() or None
+
+
+def _configured_block(config: Path) -> str | None:
+    """The settings between our markers, or None if they are not there."""
+    try:
+        lines = config.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    try:
+        start = lines.index(BEGIN_MARKER)
+        end = lines.index(END_MARKER)
+    except ValueError:
+        return None
+    if end < start:
+        return None
+    return "\n".join(lines[start + 1 : end])
+
+
+def _unmanaged_shell(config: Path) -> str | None:
+    """A `shell` line pointing at our launcher that we did not write."""
+    try:
+        text = config.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("shell "):
+            continue
+        # The launcher can live anywhere a user put it, so recognise it by
+        # name rather than by the path this copy happens to sit at.
+        if LAUNCHER.name in stripped:
+            return stripped
+    return None
+
+
+def _environment_lines() -> list[tuple[str, str, str]]:
+    from .observer import FLOWER_MANIFESTS, SPECIES_VARIABLE
+
+    lines = []
+    species = os.environ.get(SPECIES_VARIABLE)
+    if species is None:
+        lines.append((_OK, SPECIES_VARIABLE, "unset, so the default flower grows"))
+    elif species in FLOWER_MANIFESTS:
+        lines.append((_OK, SPECIES_VARIABLE, species))
+    else:
+        lines.append(
+            (_WARN, SPECIES_VARIABLE, f"{species!r} is not a flower; the default grows instead")
+        )
+    disable = os.environ.get("FLOWER_CURSOR_DISABLE", "0")
+    if disable != "0":
+        lines.append((_WARN, "FLOWER_CURSOR_DISABLE", f"{disable!r}, so this window has no flower"))
+    return lines
+
+
+def report() -> tuple[list[tuple[str, str, str]], bool]:
+    """Every check, and whether anything in it stops flowers growing."""
+    from .observer import FLOWER_CATALOGUE
+
+    lines: list[tuple[str, str, str]] = []
+
+    version = _kitty_version()
+    if version is None:
+        lines.append((_BAD, "kitty", "not found on PATH"))
+    else:
+        lines.append((_OK, "kitty", version))
+    if os.environ.get("KITTY_WINDOW_ID") is None:
+        lines.append((_WARN, "terminal", "this is not a Kitty window, so nothing would draw here"))
+    else:
+        lines.append((_OK, "terminal", f"Kitty window {os.environ['KITTY_WINDOW_ID']}"))
+
+    lines.append((_OK, "python", sys.version.split()[0]))
+
+    if not LAUNCHER.exists():
+        lines.append((_BAD, "launcher", f"{LAUNCHER} is missing"))
+    elif not os.access(LAUNCHER, os.X_OK):
+        lines.append((_BAD, "launcher", f"{LAUNCHER} is not executable"))
+    else:
+        lines.append((_OK, "launcher", str(LAUNCHER)))
+
+    missing = [flower.name for flower in FLOWER_CATALOGUE if not flower.manifest.exists()]
+    if missing:
+        lines.append((_BAD, "flowers", f"no assets for {', '.join(missing)}"))
+    else:
+        lines.append((_OK, "flowers", f"{len(FLOWER_CATALOGUE)} installed"))
+
+    config = kitty_config_path()
+    block = _configured_block(config)
+    if block is None:
+        # A config written by hand is a real install and has to read as one:
+        # `install.sh` only owns the block it marked, and plenty of people will
+        # have added the `shell` line themselves.
+        shell = _unmanaged_shell(config)
+        if shell is not None:
+            lines.append((_OK, "kitty.conf", f"{shell} (set by hand, not by install.sh)"))
+        else:
+            lines.append(
+                (
+                    _WARN,
+                    "kitty.conf",
+                    f"{config} does not run the launcher; run install.sh --configure",
+                )
+            )
+    else:
+        settings = "; ".join(
+            line.strip()
+            for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        lines.append((_OK, "kitty.conf", settings or "configured but empty"))
+
+    lines.extend(_environment_lines())
+    return lines, any(status == _BAD for status, _, _ in lines)
+
+
+def run_check(stream: object = None) -> int:
+    out = stream if stream is not None else sys.stdout
+    lines, broken = report()
+    width = max(len(label) for _, label, _ in lines)
+    for status, label, detail in lines:
+        print(f"{_MARKS[status]} {label.ljust(width)}  {detail}", file=out)
+    print(file=out)
+    if broken:
+        print("Something above is missing; the flower cursor will not run.", file=out)
+    else:
+        print(
+            "Everything the flower cursor needs is here. Whether it draws is up to "
+            "Kitty's graphics protocol, which this does not test.",
+            file=out,
+        )
+    return 1 if broken else 0

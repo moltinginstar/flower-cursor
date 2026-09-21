@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src/flower_cursor/check.py
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # Only 3.14, which is the floor and the ceiling: `pyproject.toml` asks
+      # for it and uv fetches it, so there is no older interpreter to prove
+      # anything against.
+      - run: uv run pytest -q
+
+  install:
+    # The installer is the first thing a new user runs, and it edits their
+    # kitty.conf, so it is worth exercising against a throwaway config rather
+    # than trusting that a shell script stayed correct.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: configure, reconfigure, then uninstall
+        run: |
+          set -eu
+          export KITTY_CONFIG_DIRECTORY="$RUNNER_TEMP/kitty"
+          mkdir -p "$KITTY_CONFIG_DIRECTORY"
+          printf 'font_size 14\nenv EDITOR=nvim\n' > "$KITTY_CONFIG_DIRECTORY/kitty.conf"
+          cp "$KITTY_CONFIG_DIRECTORY/kitty.conf" "$RUNNER_TEMP/original"
+
+          ./install.sh > /dev/null
+          diff "$RUNNER_TEMP/original" "$KITTY_CONFIG_DIRECTORY/kitty.conf"
+          echo "a plain run left the config alone"
+
+          ./install.sh --configure > /dev/null
+          ./install.sh --species crocus --configure > /dev/null
+          test "$(grep -c '^shell ' "$KITTY_CONFIG_DIRECTORY/kitty.conf")" -eq 1
+          grep -q 'FLOWER_CURSOR_SPECIES=crocus' "$KITTY_CONFIG_DIRECTORY/kitty.conf"
+          grep -q 'env EDITOR=nvim' "$KITTY_CONFIG_DIRECTORY/kitty.conf"
+          echo "configuring twice left one block and kept the user's own settings"
+
+          ./install.sh --uninstall > /dev/null
+          diff "$RUNNER_TEMP/original" "$KITTY_CONFIG_DIRECTORY/kitty.conf"
+          echo "uninstalling put the config back exactly as it was"

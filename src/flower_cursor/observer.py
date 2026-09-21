@@ -121,12 +121,24 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="start the user's login shell with Kitty's shell integration nested inside",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="report whether this machine is set up to grow flowers, then exit",
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.check:
+        # Answered before anything opens a PTY or draws: the point of asking is
+        # that something is wrong, and a report that needs a working install to
+        # print is no use to the person whose install is broken.
+        from .check import run_check
+
+        return run_check()
     command = args.command
     if command[:1] == ["--"]:
         command = command[1:]
