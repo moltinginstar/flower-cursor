@@ -62,7 +62,19 @@ def test_species_comes_from_the_environment_when_the_command_line_is_silent(monk
 
 def test_an_explicit_flower_beats_the_environment(monkeypatch) -> None:
     monkeypatch.setenv(observer.SPECIES_VARIABLE, "cornflower")
-    assert observer.selected_species("coral", overridden=False) == "coral"
+    assert observer.selected_species("anemone", overridden=False) == "anemone"
+
+
+def test_config_species_accepts_all_canonical_flowers(monkeypatch) -> None:
+    for species in observer.FLOWER_MANIFESTS:
+        monkeypatch.setenv(observer.SPECIES_VARIABLE, species)
+        assert observer.selected_species(None, overridden=False) == species
+
+
+def test_config_species_rejects_coral_with_default_fallback(monkeypatch, capsys) -> None:
+    monkeypatch.setenv(observer.SPECIES_VARIABLE, "coral")
+    assert observer.selected_species(None, overridden=False) is None
+    assert "coral" in capsys.readouterr().err
 
 
 def test_an_overriding_manifest_is_not_second_guessed(monkeypatch) -> None:

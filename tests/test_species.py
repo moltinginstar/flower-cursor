@@ -5,7 +5,14 @@ import pytest
 from flower_cursor.bee import IdleBee
 from flower_cursor.geometry import ViewportGeometry
 from flower_cursor.lifecycle import CursorCell, FlowerInstance
-from flower_cursor.observer import DEFAULT_MANIFEST, FLOWER_MANIFESTS, build_parser
+from flower_cursor.observer import (
+    DEFAULT_MANIFEST,
+    DEFAULT_SPECIES,
+    FLOWER_CATALOGUE,
+    FLOWER_DESCRIPTIONS,
+    FLOWER_MANIFESTS,
+    build_parser,
+)
 from flower_cursor.shedding import SheddingFlower
 from flower_cursor.species import LEGACY_CORAL_SHEDDING_ORDER, metadata_from_manifest
 
@@ -108,11 +115,39 @@ def test_species_support_bounds_clamp_bee_landing_offsets() -> None:
     assert -0.2 <= bee.landing_offset[1] <= 0.2
 
 
-def test_flower_selectors_keep_coral_bundle_and_reject_custom_conflict() -> None:
-    assert FLOWER_MANIFESTS["coral"] == DEFAULT_MANIFEST
-    assert FLOWER_MANIFESTS["cornflower"] == (
-        DEFAULT_MANIFEST.parent.parent / "cornflower" / "manifest.json"
+PUBLIC_FLOWERS = ("anemone", "cornflower", "daisy", "crocus", "poppy", "dahlia", "orchid")
+
+
+def test_flower_catalogue_has_the_public_seven_species_in_order() -> None:
+    assert DEFAULT_SPECIES == "anemone"
+    assert tuple(flower.name for flower in FLOWER_CATALOGUE) == PUBLIC_FLOWERS
+    assert tuple(FLOWER_MANIFESTS) == PUBLIC_FLOWERS
+    assert FLOWER_MANIFESTS["anemone"] == DEFAULT_MANIFEST
+    for name in PUBLIC_FLOWERS[1:]:
+        assert FLOWER_MANIFESTS[name] == DEFAULT_MANIFEST.parent.parent / name / "manifest.json"
+
+
+def test_flower_descriptions_are_user_facing_and_name_the_poppy_correctly() -> None:
+    assert tuple(FLOWER_DESCRIPTIONS) == PUBLIC_FLOWERS
+    assert FLOWER_DESCRIPTIONS["poppy"] == "Icelandic poppy"
+    help_text = " ".join(build_parser().format_help().split())
+    assert all(description in help_text for description in FLOWER_DESCRIPTIONS.values())
+
+
+def test_cli_accepts_each_public_flower_and_rejects_coral() -> None:
+    parser = build_parser()
+    assert [parser.parse_args(["--flower", name]).flower for name in PUBLIC_FLOWERS] == list(
+        PUBLIC_FLOWERS
     )
-    assert build_parser().parse_args(["--flower", "cornflower"]).flower == "cornflower"
     with pytest.raises(SystemExit):
-        build_parser().parse_args(["--flower", "coral", "--shedding-manifest", "custom.json"])
+        parser.parse_args(["--flower", "coral"])
+
+
+def test_explicit_flower_and_manifest_conflict_is_rejected() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--flower", "anemone", "--shedding-manifest", "custom.json"])
+
+
+def test_manifest_species_conflict_is_rejected() -> None:
+    with pytest.raises(ValueError, match="does not match"):
+        metadata_from_manifest({"species": "cornflower"}, selected_species="daisy")

@@ -6,10 +6,26 @@ from flower_cursor.lifecycle import CursorCell, FlowerInstance
 from flower_cursor.shedding import SheddingFlower, petal_decay, petal_displacement
 
 
-def mature_flower() -> SheddingFlower:
-    flower = SheddingFlower(FlowerInstance.bud(1, CursorCell(4, 8)))
+def mature_flower(group_count: int = 6) -> SheddingFlower:
+    flower = SheddingFlower(FlowerInstance.bud(1, CursorCell(4, 8)), group_count=group_count)
     flower.update(3.0)
     return flower
+
+
+def detach_events(group_count: int) -> list[tuple[float, int]]:
+    flower = mature_flower(group_count)
+    flower.begin_withering()
+    events = []
+    seen: set[int] = set()
+    elapsed = 0.0
+    while len(events) < group_count:
+        flower.update(1 / 120)
+        elapsed += 1 / 120
+        for flight in flower.flights:
+            if flight.index not in seen:
+                events.append((elapsed, flight.index))
+                seen.add(flight.index)
+    return events
 
 
 def test_petals_detach_in_staggered_order_and_capture_actual_pose() -> None:
@@ -23,6 +39,48 @@ def test_petals_detach_in_staggered_order_and_capture_actual_pose() -> None:
     flower.update(0.27)
     assert [flight.index for flight in flower.flights] == [1, 4, 0, 5, 2, 3]
     assert all(petal.value == 0 for petal in flower.petals)
+
+
+@pytest.mark.parametrize(
+    ("group_count", "expected_order"),
+    [
+        (6, (1, 4, 0, 5, 2, 3)),
+        (18, tuple(range(18))),
+    ],
+)
+def test_standard_density_keeps_the_existing_detach_interval(group_count, expected_order) -> None:
+    events = detach_events(group_count)
+    assert [index for _, index in events] == list(expected_order)
+    assert [time for time, _ in events] == pytest.approx(
+        [0.12 + order * 0.05 for order in range(group_count)], abs=1 / 120
+    )
+
+
+def test_dense_dahlia_detaches_every_group_before_one_simulated_second() -> None:
+    events = detach_events(45)
+    assert len(events) == 45
+    assert [index for _, index in events] == list(range(45))
+    assert events[-1][0] < 1.0
+    assert events[-1][0] == pytest.approx(0.97, abs=1 / 120)
+
+
+def test_dense_departure_keeps_flights_forward_only_through_recovery() -> None:
+    flower = mature_flower(45)
+    flower.begin_withering()
+    flower.update(0.98)
+    before = {flight.identifier: flight.age for flight in flower.flights}
+    assert len(before) == 45
+    assert len({flight.index for flight in flower.flights}) == 45
+    growth = [petal.value for petal in flower.petals]
+
+    flower.restore()
+    flower.update(1 / 120)
+
+    assert all(
+        flight.age == pytest.approx(before[flight.identifier] + 1 / 120)
+        for flight in flower.flights
+    )
+    assert all(petal.value > previous for petal, previous in zip(flower.petals, growth))
 
 
 def test_restore_preserves_pose_and_velocities_without_recalling_fallen_petals() -> None:

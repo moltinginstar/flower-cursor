@@ -9,6 +9,7 @@ import struct
 import sys
 import termios
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from .cwd_follower import CwdFollower
@@ -22,11 +23,43 @@ from .multi_runtime import DEFAULT_INDEPENDENT_LIMIT, MultiCursorFlowers
 from .output_arbiter import OutputArbiter
 from .pty_runner import run
 
+DEFAULT_SPECIES = "anemone"
 DEFAULT_MANIFEST = Path(__file__).with_name("assets") / "layered" / "manifest.json"
-FLOWER_MANIFESTS = {
-    "coral": DEFAULT_MANIFEST,
-    "cornflower": DEFAULT_MANIFEST.parent.parent / "cornflower" / "manifest.json",
-}
+
+
+@dataclass(frozen=True, slots=True)
+class FlowerSpec:
+    name: str
+    description: str
+    manifest: Path
+
+
+FLOWER_CATALOGUE = (
+    FlowerSpec("anemone", "Pink Japanese anemone", DEFAULT_MANIFEST),
+    FlowerSpec(
+        "cornflower",
+        "Blue cornflower",
+        DEFAULT_MANIFEST.parent.parent / "cornflower" / "manifest.json",
+    ),
+    FlowerSpec("daisy", "White daisy", DEFAULT_MANIFEST.parent.parent / "daisy" / "manifest.json"),
+    FlowerSpec(
+        "crocus", "Violet crocus", DEFAULT_MANIFEST.parent.parent / "crocus" / "manifest.json"
+    ),
+    FlowerSpec(
+        "poppy", "Icelandic poppy", DEFAULT_MANIFEST.parent.parent / "poppy" / "manifest.json"
+    ),
+    FlowerSpec(
+        "dahlia", "Ruby-red dahlia", DEFAULT_MANIFEST.parent.parent / "dahlia" / "manifest.json"
+    ),
+    FlowerSpec(
+        "orchid",
+        "Green-and-white slipper orchid",
+        DEFAULT_MANIFEST.parent.parent / "orchid" / "manifest.json",
+    ),
+)
+FLOWER_MANIFESTS = {flower.name: flower.manifest for flower in FLOWER_CATALOGUE}
+FLOWER_DESCRIPTIONS = {flower.name: flower.description for flower in FLOWER_CATALOGUE}
+_FLOWER_HELP = "; ".join(f"{flower.name}: {flower.description}" for flower in FLOWER_CATALOGUE)
 # Kitty's `shell` option runs a program with no arguments of its own, so the
 # species a user wants in every window has to arrive some other way.
 SPECIES_VARIABLE = "FLOWER_CURSOR_SPECIES"
@@ -70,7 +103,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument(
-        "--flower", choices=tuple(FLOWER_MANIFESTS), help="select a bundled flower species"
+        "--flower",
+        choices=tuple(FLOWER_MANIFESTS),
+        help=f"select a bundled flower species (default: {DEFAULT_SPECIES}; {_FLOWER_HELP})",
     )
     selection.add_argument(
         "--shedding-manifest", type=Path, help="override the bundled layered flower assets"
@@ -105,10 +140,9 @@ def main(argv: list[str] | None = None) -> int:
     previous: CursorCell | None = None
     current_cell: CursorCell | None = None
     species = selected_species(args.flower, overridden=args.shedding_manifest is not None)
-    manifest = (
-        args.shedding_manifest
-        or (FLOWER_MANIFESTS[species] if species is not None else None)
-        or (DEFAULT_MANIFEST if args.render else None)
+    selected = species or (DEFAULT_SPECIES if args.render else None)
+    manifest = args.shedding_manifest or (
+        FLOWER_MANIFESTS[selected] if selected is not None else None
     )
     if manifest is not None:
         # Configured as Kitty's `shell`, this wrapper is the only thing between
@@ -117,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             from .layered import LayeredCompositor, LayeredRuntime
 
-            chosen = {"species": species} if species is not None else {}
+            chosen = {"species": species} if species not in (None, DEFAULT_SPECIES) else {}
             runtime = LayeredRuntime(manifest, **chosen)
             compositor = LayeredCompositor(manifest, **chosen)
             flowers = MultiCursorFlowers(manifest, independent_limit=args.independent_cursors)

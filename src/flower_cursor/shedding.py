@@ -62,6 +62,9 @@ class SheddingFlower:
         self._wall_time_idle = wall_time_idle
         self._idle_time = 0.0
         self.shedding_order = shedding_order
+        # Density-aware staggering keeps dense blooms inside the existing exit window;
+        # the lifecycle and stalk timing remain unchanged.
+        self._detach_interval = 0.05 if group_count <= 18 else 0.85 / (group_count - 1)
         self.petals = tuple(_Spring(1.0, response=9.0) for _ in range(group_count))
         self.flights: list[PetalFlight] = []
         self.head = _Spring(1.0, response=18.0)
@@ -130,7 +133,10 @@ class SheddingFlower:
                     petal.step(petal.value, dt)
                 self._exit_age += dt
                 for order, index in enumerate(self.shedding_order):
-                    if index in self._shed or self._exit_age < 0.12 + order * 0.05:
+                    if (
+                        index in self._shed
+                        or self._exit_age < 0.12 + order * self._detach_interval
+                    ):
                         continue
                     self._shed.add(index)
                     petal = self.petals[index]
