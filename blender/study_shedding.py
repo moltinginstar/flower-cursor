@@ -78,6 +78,17 @@ def capture_flight(flight: PetalFlight):
     return [tuple(v - center) for v in vertices], center, faces, color, velocity
 
 
+def browned(color, amount, brown):
+    """*color* mixed *amount* of the way toward *brown*, keeping its alpha.
+
+    Dying tissue is the same operation wherever it happens - a fallen petal
+    here, a withering stem in `bake_layered_flower` - and the two looked
+    different only because each spelled the mix out again.
+    """
+    mixed = tuple(c * (1.0 - amount) + b * amount for c, b in zip(color[:3], brown))
+    return mixed + tuple(color[3:])
+
+
 def add_flight(flight, captured):
     vertices, center, faces, color, velocity = captured
     mesh = bpy.data.meshes.new(f"Fallen_petal_{flight.identifier}")
@@ -94,8 +105,7 @@ def add_flight(flight, captured):
         age * (1 if flight.index % 2 else -1) * 5.0,
         age * 0.8 * math.sin(flight.index),
     )
-    brown = (0.16, 0.07, 0.025)
-    color = tuple(c * (1.0 - decay) + b * decay for c, b in zip(color[:3], brown)) + (color[3],)
+    color = browned(color, decay, (0.16, 0.07, 0.025))
     mat = authored.material(mesh.name, color, 0.48, transmission=0.16, subsurface=0.075)
     mesh.materials.append(mat)
     for polygon in mesh.polygons:

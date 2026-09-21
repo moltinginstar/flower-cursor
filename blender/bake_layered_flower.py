@@ -84,12 +84,8 @@ def main():
             mat = bpy.data.materials.get(material_name)
             if mat is not None:
                 color = tuple(mat.diffuse_color)
-                brown = (0.12, 0.075, 0.035)
-                tinted = tuple(c * (1 - browning) + b * browning for c, b in zip(color[:3], brown))
-                mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = (
-                    *tinted,
-                    color[3],
-                )
+                tinted = study.browned(color, browning, (0.12, 0.075, 0.035))
+                mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = tinted
         study.expand_canvas(scene)
         bpy.context.view_layer.update()
         head = world_to_camera_view(scene, scene.camera, origin)
