@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import math
 import os
 import struct
 import sys
@@ -63,6 +64,12 @@ _FLOWER_HELP = "; ".join(f"{flower.name}: {flower.description}" for flower in FL
 # Kitty's `shell` option runs a program with no arguments of its own, so the
 # species a user wants in every window has to arrive some other way.
 SPECIES_VARIABLE = "FLOWER_CURSOR_SPECIES"
+# Same reason: the buzz has to be switchable from a Kitty config that cannot
+# pass arguments. It carries a volume rather than a flag, because a separate
+# on/off switch alongside a volume is two ways to say silent that can disagree.
+BUZZ_VARIABLE = "FLOWER_CURSOR_BUZZ"
+# What a bare `--buzz` means. Zero is off, and off is the default.
+BUZZ_DEFAULT = 1.0
 
 
 def selected_species(argument: str | None, *, overridden: bool) -> str | None:
@@ -122,12 +129,55 @@ def build_parser() -> argparse.ArgumentParser:
         help="start the user's login shell with Kitty's shell integration nested inside",
     )
     parser.add_argument(
+        "--buzz",
+        nargs="?",
+        type=float,
+        const=BUZZ_DEFAULT,
+        default=None,
+        metavar="VOLUME",
+        help=(
+            "wingbeat audio while the bee is in flight, 0 to 1, where a bare --buzz means "
+            f"{BUZZ_DEFAULT:g} and 0 is silence (default: off; {BUZZ_VARIABLE}=0.4 sets it "
+            "for every window; needs the optional sound extra)"
+        ),
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="report whether this machine is set up to grow flowers, then exit",
     )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
+
+
+def buzz_volume(argument: float | None) -> float:
+    """How loud the bee is, from the command line or the environment.
+
+    Silent unless asked for, and zero is the same silence as never asking, so
+    there is one number rather than a flag and a volume that can disagree. An
+    unreadable value is worth a word but not a dead window, the same way an
+    unknown flower name is.
+    """
+    value = argument
+    if value is None:
+        text = os.environ.get(BUZZ_VARIABLE, "").strip()
+        if not text:
+            return 0.0
+        try:
+            value = float(text)
+        except ValueError:
+            print(
+                f"flower-cursor: unreadable {BUZZ_VARIABLE} {text!r}, staying silent",
+                file=sys.stderr,
+            )
+            return 0.0
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        print(
+            f"flower-cursor: buzz volume {value!r} is outside 0 to 1, staying silent",
+            file=sys.stderr,
+        )
+        return 0.0
+    return value
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -175,6 +225,22 @@ def main(argv: list[str] | None = None) -> int:
         runtime = None
         compositor = None
         flowers = None
+    buzz = None
+    volume = buzz_volume(args.buzz)
+    if runtime is not None and volume > 0:
+        # Audio is an accessory to a cursor: a backend that cannot be imported,
+        # opened or started costs the user a word on stderr, never the window.
+        try:
+            from .buzz import BeeBuzz
+
+            candidate = BeeBuzz(
+                volume=volume,
+                report=lambda message: print(message, file=sys.stderr),
+            )
+            buzz = candidate if candidate.start() else None
+        except Exception as error:
+            print(f"flower-cursor: no bee audio ({error})", file=sys.stderr)
+            buzz = None
     output = sys.stdout.buffer
 
     def write_output(data: bytes) -> None:
@@ -262,6 +328,8 @@ def main(argv: list[str] | None = None) -> int:
                 visuals = flowers.visuals(visuals, stamp)
             renderer.render(visuals, current_cell, duration, viewport=viewport)
             output.flush()
+            if buzz is not None:
+                buzz.update(runtime.bee, audible=focused)
 
     focus_filter = FocusFilter() if renderer is not None else None
 
@@ -275,6 +343,10 @@ def main(argv: list[str] | None = None) -> int:
         # one and it grows in.
         if is_focused or runtime is None:
             return
+        # The bee is still on its way out, but it is on its way out of a pane
+        # nobody is looking at.
+        if buzz is not None:
+            buzz.mute()
         runtime.begin_withering()
         if flowers is not None:
             flowers.begin_withering()
@@ -307,6 +379,8 @@ def main(argv: list[str] | None = None) -> int:
             hide_cursor=renderer is not None,
         )
     finally:
+        if buzz is not None:
+            buzz.close()
         if renderer is not None:
             renderer.clear()
             output.flush()

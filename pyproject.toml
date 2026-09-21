@@ -12,6 +12,11 @@ dependencies = [
     "pillow>=11.3",
 ]
 
+[project.optional-dependencies]
+# Wingbeat audio for the idle bee. Optional because the cursor is complete
+# without it, and because an audio backend is a native dependency.
+sound = ["miniaudio>=1.71"]
+
 [project.scripts]
 flower-cursor = "flower_cursor.observer:shell_main"
 
