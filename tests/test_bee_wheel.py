@@ -99,6 +99,7 @@ viewport = ViewportGeometry(30, 100, 1600, 990)
 r.set_geometry(viewport, renderer.layout)
 cell = CursorCell(8, 12)
 r.move_to(cell)
+r.bee.interval = r.bee.wait = 10.0
 for _ in range(600):
     r.update(1/60)
 v = next(v for v in r.visuals() if isinstance(v, BeeVisual))

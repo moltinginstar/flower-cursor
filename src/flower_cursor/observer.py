@@ -22,6 +22,9 @@ from .multi_runtime import DEFAULT_INDEPENDENT_LIMIT, MultiCursorFlowers
 from .output_arbiter import OutputArbiter
 from .pty_runner import run
 from .settings import (
+    BEE_INTERVAL_DEFAULT,
+    BEE_INTERVAL_VARIABLE,
+    BEE_VARIABLE,
     BUZZ_DEFAULT,
     BUZZ_VARIABLE,
     DEFAULT_MANIFEST,
@@ -31,6 +34,8 @@ from .settings import (
     FLOWER_MANIFESTS,
     SPECIES_VARIABLE,
     FlowerSpec,
+    bee_enabled,
+    bee_interval,
     buzz_volume,
     flower_help,
     selected_species,
@@ -39,6 +44,9 @@ from .settings import (
 # Everything a window is allowed to ask for lives in `settings`; these names are
 # re-exported because `--flower`, the docs and the tests all learned them here.
 __all__ = [
+    "BEE_INTERVAL_DEFAULT",
+    "BEE_INTERVAL_VARIABLE",
+    "BEE_VARIABLE",
     "BUZZ_DEFAULT",
     "BUZZ_VARIABLE",
     "DEFAULT_MANIFEST",
@@ -48,6 +56,8 @@ __all__ = [
     "FLOWER_MANIFESTS",
     "SPECIES_VARIABLE",
     "FlowerSpec",
+    "bee_enabled",
+    "bee_interval",
     "buzz_volume",
     "main",
     "selected_species",
@@ -109,6 +119,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--bee-every",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "how long the caret stays still before a bee visits, on average; the wait is "
+            "randomised around it and starts over whenever the caret moves or the bee leaves "
+            f"(default: {BEE_INTERVAL_DEFAULT:g}; 0 means as soon as the caret stops; "
+            f"{BEE_INTERVAL_VARIABLE}=180 sets it for every window)"
+        ),
+    )
+    parser.add_argument(
+        "--no-bee",
+        action="store_true",
+        help=(
+            "grow the flower without its visitor "
+            f"({BEE_VARIABLE}=off does the same for every window)"
+        ),
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="report whether this machine is set up to grow flowers, then exit",
@@ -151,7 +181,12 @@ def _grow(
 
         chosen = {"species": species} if species is not None else {}
         return (
-            LayeredRuntime(manifest, **chosen),
+            LayeredRuntime(
+                manifest,
+                bee=bee_enabled(args.no_bee),
+                bee_interval=bee_interval(args.bee_every),
+                **chosen,
+            ),
             LayeredCompositor(manifest, **chosen),
             MultiCursorFlowers(manifest, independent_limit=args.independent_cursors),
         )
@@ -375,6 +410,10 @@ def main(argv: list[str] | None = None) -> int:
     # Read even when nothing will be drawn, so an unreadable setting is still
     # worth the line on stderr that says so.
     volume = buzz_volume(args.buzz)
+    if volume > 0 and not bee_enabled(args.no_bee):
+        # The buzz is the bee's; there is nothing here to make the sound.
+        print("flower-cursor: no bee to buzz, staying silent", file=sys.stderr)
+        volume = 0.0
     window = _Window(
         args,
         runtime=runtime,

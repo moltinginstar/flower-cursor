@@ -102,10 +102,11 @@ def test_custom_shedding_count_and_order_are_used() -> None:
 
 
 def test_species_support_bounds_clamp_bee_landing_offsets() -> None:
-    bee = IdleBee(random.Random(9))
+    bee = IdleBee(random.Random(9), interval=10.0)
     bee.set_geometry(ViewportGeometry(30, 100, 1600, 990), (50, 45))
     bee.set_landing_support_bounds(((-0.25, 0.25), (-0.2, 0.2)))
     bee.move_to(CursorCell(8, 12))
+    bee.wait = 10.0
     for _ in range(11):
         bee.update(1.0, (192.0, 250.0))
 

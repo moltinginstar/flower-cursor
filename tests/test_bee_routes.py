@@ -3,7 +3,7 @@ import random
 
 import pytest
 
-from flower_cursor.bee import APPROACH_TIME, COOLDOWN, REST_CONTACT, IdleBee
+from flower_cursor.bee import APPROACH_TIME, INTERVAL_JITTER, REST_CONTACT, IdleBee
 from flower_cursor.geometry import ViewportGeometry
 from flower_cursor.lifecycle import CursorCell
 
@@ -14,7 +14,7 @@ def visitor(seed=9, width=1600, height=990, head=None, size=(50, 45)):
     bee = IdleBee(random.Random(seed))
     bee.set_geometry(ViewportGeometry(30, 100, width, height), size)
     bee.move_to(CELL)
-    bee.idle = 10
+    bee.idle = bee.wait
     bee.update(0, head or (width * 0.4, height * 0.55))
     assert bee.visible
     return bee
@@ -142,7 +142,8 @@ def test_routes_land_face_travel_and_leave_at_all_aspects(seed, extent, fraction
         if not bee.visible:
             assert bee.offscreen
             assert outside_edges(bee)[bee._exit[0]]
-            assert COOLDOWN - 1 / 60 <= bee.cooldown <= COOLDOWN
+            low, high = (bee.interval * factor for factor in INTERVAL_JITTER)
+            assert bee.idle <= 1 / 60 and low <= bee.wait <= high
             break
     else:
         pytest.fail("visit exceeded its sampled timing budget")

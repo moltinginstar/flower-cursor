@@ -53,8 +53,8 @@ def test_observer_rendering_defaults_and_manifest_override(monkeypatch, args):
     created = []
     original = layered.LayeredRuntime
 
-    def create(manifest):
-        runtime = original(manifest)
+    def create(manifest, **options):
+        runtime = original(manifest, **options)
         created.append((manifest, runtime))
         return runtime
 

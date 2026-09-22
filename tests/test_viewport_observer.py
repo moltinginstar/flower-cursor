@@ -27,10 +27,8 @@ while time.monotonic() < deadline:
 """
 _RUNNER = f"""
 import sys
-import flower_cursor.bee
 from flower_cursor.observer import main
-flower_cursor.bee.IDLE_DELAY = 0.05
-raise SystemExit(main(['--render', '--', sys.executable, '-c', {_CHILD!r}]))
+raise SystemExit(main(['--render', '--bee-every', '0.05', '--', sys.executable, '-c', {_CHILD!r}]))
 """
 
 

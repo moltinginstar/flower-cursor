@@ -12,11 +12,18 @@ from .easing import clamp01, require_duration, smoothstep
 from .geometry import ViewportGeometry
 from .lifecycle import CursorCell
 
-IDLE_DELAY = 10.0
 APPROACH_TIME = 3.8
 REST_TIME = 6.0
 DEPARTURE_TIME = 1.8
-COOLDOWN = 35.0
+# How long the caret stays still before a visit, on average. One number rather
+# than an idle threshold plus a cooldown: both answered the same question -
+# when may a bee appear - and a single wait that restarts whenever the caret
+# moves or the bee leaves says it once. The clock runs only while nothing
+# moves, so a bee means the screen was actually left alone.
+DEFAULT_INTERVAL = 90.0
+# Drawn fresh for every wait, because a visitor that arrives on the same
+# schedule every time reads as a timer rather than as something alive.
+INTERVAL_JITTER = (0.67, 1.33)
 HOVER_TIME = 2.45
 LANDING_TIME = 2.8
 TOUCHDOWN_TIME = 3.45
@@ -90,8 +97,16 @@ class _FlightLeg:
 
 
 class IdleBee:
-    def __init__(self, rng: random.Random | None = None) -> None:
+    def __init__(
+        self, rng: random.Random | None = None, *, interval: float = DEFAULT_INTERVAL
+    ) -> None:
         self.rng = rng if rng is not None else random.Random()
+        # The wait draws from a stream of its own, forked from the visit stream
+        # without consuming it, so how often a bee comes never changes the
+        # route it flies for a given seed.
+        self._waits = random.Random()
+        self._waits.setstate(self.rng.getstate())
+        self.interval = interval
         self.hover_time = HOVER_TIME
         self.landing_time = LANDING_TIME
         self.touchdown_time = TOUCHDOWN_TIME
@@ -112,7 +127,7 @@ class IdleBee:
         self.size = (50, 45)
         self._next_size = self.size
         self.idle = 0.0
-        self.cooldown = 0.0
+        self.wait = 0.0
         self.age = 0.0
         self.departure: float | None = None
         self.departure_folded = 0.0
@@ -127,6 +142,12 @@ class IdleBee:
         self._geometry_changed = False
         self.phase = 0.0
         self.generation = 0
+        self._sample_wait()
+
+    def _sample_wait(self) -> None:
+        """Start the wait over, with a length this visit does not share."""
+        self.idle = 0.0
+        self.wait = self.interval * self._waits.uniform(*INTERVAL_JITTER)
 
     @property
     def visible(self) -> bool:
@@ -187,13 +208,12 @@ class IdleBee:
         if cell == self.target:
             return
         self.target = cell
-        self.idle = 0.0
+        self._sample_wait()
         self.leave()
 
     def reset(self) -> None:
         self.cell = self.target = None
-        self.idle = 0.0
-        self.cooldown = COOLDOWN
+        self._sample_wait()
         self.departure = None
         self.vx = self.vy = self.ax = self.ay = 0.0
         self._legs.clear()
@@ -212,19 +232,13 @@ class IdleBee:
             self._step(dt, head)
 
     def _step(self, dt: float, head: tuple[float, float] | None) -> None:
-        self.cooldown = max(0.0, self.cooldown - dt)
         if self.target is not None:
             self.idle += dt
         viewport = self.viewport
         if viewport is None:
             return
         if not self.visible:
-            if (
-                self.target is None
-                or head is None
-                or self.idle + 1e-9 < IDLE_DELAY
-                or self.cooldown > 0
-            ):
+            if self.target is None or head is None or self.idle + 1e-9 < self.wait:
                 return
             self.cell = self.target
             self.generation += 1
@@ -271,7 +285,7 @@ class IdleBee:
             and self._outside_edges[self._exit[0]]
         ):
             self.cell = None
-            self.cooldown = COOLDOWN
+            self._sample_wait()
 
     @property
     def _outside_edges(self) -> tuple[bool, bool, bool, bool]:
@@ -529,3 +543,10 @@ class IdleBee:
             self.phase,
             self._heading,
         )
+
+
+class NoBee(IdleBee):
+    """A flower nothing visits: the disabled bee, and every secondary cursor's."""
+
+    def _step(self, dt: float, head: tuple[float, float] | None) -> None:
+        return

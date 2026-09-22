@@ -154,6 +154,9 @@ def scene():
     )
     runtime.set_geometry(VIEWPORT, renderer.layout)
     runtime.move_to(A)
+    # The wait between visits is randomised; pin it so the seconds below are
+    # the visit's rather than the wait's.
+    runtime.bee.interval = runtime.bee.wait = 10.0
     advance(runtime, 10)
     visitor = next(v for v in runtime.visuals() if isinstance(v, BeeVisual))
     return runtime, compositor, renderer, writes, visitor
@@ -170,6 +173,7 @@ def test_real_rest_tracks_rendered_head_with_top_clamp_left_crop_and_custom_layo
     )
     runtime.set_geometry(VIEWPORT, renderer.layout)
     runtime.move_to(cell)
+    runtime.bee.interval = runtime.bee.wait = 10.0
     advance(runtime, 15)
     width = ((7 if custom else 5) * 16 - 8) * 2
     height = ((3 if custom else 2) * 33 - 2) * 2
@@ -512,6 +516,7 @@ def test_recycled_lower_bee_image_id_stays_above_real_flowers(secondary_count, z
     render()
     retired_id = terminal.ordered()[0].image_id
     runtime.move_to(A)
+    runtime.bee.interval = runtime.bee.wait = 10.0
     extras.update(cells, 0)
     render()
     for _ in range(3 * 60):
@@ -564,6 +569,7 @@ def test_exported_near_feet_contact_visible_bloom_at_actual_render_scale(viewpor
     )
     runtime.set_geometry(viewport, renderer.layout)
     runtime.move_to(cell)
+    runtime.bee.interval = runtime.bee.wait = 10.0
     advance(runtime, 15)
     contact = json.loads((ASSETS / "manifest.json").read_text())["contacts"]["0"]
     near_feet = [foot for foot in contact["feet"] if foot[1] > contact["anchor"][1]]

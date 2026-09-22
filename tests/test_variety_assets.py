@@ -254,6 +254,9 @@ def test_real_variety_bee_feet_touch_each_rendered_bloom(species: str) -> None:
         compositor = LayeredCompositor(manifest, species=species)
         runtime.set_geometry(VIEWPORT, layout)
         runtime.move_to(CursorCell(8, 12))
+        # The wait between visits is randomised; pin it so this budget covers
+        # the visit rather than the wait.
+        runtime.bee.interval = runtime.bee.wait = 10.0
         for _ in range(2000):
             runtime.update(1 / 60)
             if (

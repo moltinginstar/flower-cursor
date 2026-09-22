@@ -6,7 +6,6 @@ import random
 import pytest
 
 from flower_cursor.bee import (
-    COOLDOWN,
     BeePose,
     IdleBee,
 )
@@ -31,16 +30,20 @@ def advance(runtime, duration, step=1 / 60):
         duration -= dt
 
 
-def measured_bee():
-    bee = IdleBee(random.Random(9))
+def measured_bee(wait=10.0):
+    bee = IdleBee(random.Random(9), interval=wait)
     bee.set_geometry(VIEWPORT, (50, 45))
     bee.move_to(A)
+    # Every wait is randomised around the interval; these tests measure the
+    # visit rather than the wait, so they pin the first one and read `wait`
+    # for the ones the bee samples for itself.
+    bee.wait = wait
     return bee
 
 
-def test_visit_needs_ten_seconds_stationary_and_is_not_a_keypress_effect():
+def test_visit_needs_the_whole_wait_and_is_not_a_keypress_effect():
     bee = measured_bee()
-    advance(bee, 9.9)
+    advance(bee, bee.wait - 0.1)
     assert not bee.visible
     bee.move_to(A)
     advance(bee, 0.1)
@@ -100,12 +103,12 @@ def test_natural_departure_removes_only_after_entire_sprite_is_offscreen():
                 or round(bee.y - frame.height / 2) >= VIEWPORT.height
             )
             assert previous != bee.pose
-            assert bee.cooldown == COOLDOWN
+            assert bee.idle <= 1 / 120
             break
     else:
         pytest.fail("natural visit never left the viewport")
     assert seen_inside and seen_departure
-    advance(bee, COOLDOWN - 0.1)
+    advance(bee, bee.wait - 0.1)
     assert not bee.visible
     advance(bee, 0.2)
     assert bee.visible and bee.generation == 2
@@ -132,22 +135,23 @@ def test_screen_reset_and_suspend_remove_visitor_without_replaying():
     assert not bee.visible and bee.target is None
     assert (bee.vx, bee.vy) == (0, 0)
     bee.move_to(B)
-    advance(bee, COOLDOWN - 0.1)
+    advance(bee, bee.wait - 0.1)
     assert not bee.visible
     advance(bee, 0.2)
     assert bee.visible
     bee.update(60, HEAD)
     assert not bee.visible and bee.target == B
-    assert bee.cooldown == COOLDOWN
-    advance(bee, COOLDOWN - 0.1)
+    assert bee.idle == 0
+    advance(bee, bee.wait - 0.1)
     assert not bee.visible
     advance(bee, 0.2)
     assert bee.visible
 
 
-def test_missing_geometry_or_head_inhibits_visit_and_geometry_loss_cools_down():
-    bee = IdleBee()
+def test_missing_geometry_or_head_inhibits_visit_and_geometry_loss_restarts_the_wait():
+    bee = IdleBee(interval=10.0)
     bee.move_to(A)
+    bee.wait = 10.0
     advance(bee, 20)
     assert not bee.visible
     bee.set_geometry(VIEWPORT, (50, 45))
@@ -158,9 +162,9 @@ def test_missing_geometry_or_head_inhibits_visit_and_geometry_loss_cools_down():
     assert bee.visible and bee.generation == 1
     bee.set_geometry(None, (1, 1))
     assert not bee.visible and bee.target == A
-    assert bee.cooldown == COOLDOWN
+    assert bee.idle == 0
     bee.set_geometry(VIEWPORT, (60, 55))
-    advance(bee, COOLDOWN - 0.1)
+    advance(bee, bee.wait - 0.1)
     assert not bee.visible
     advance(bee, 0.2)
     assert bee.visible and bee.size == (60, 55)
@@ -185,7 +189,7 @@ def test_resize_retains_pose_velocity_age_and_visit_size(departing):
         if not bee.visible:
             break
     assert not bee.visible and bee.offscreen
-    advance(bee, COOLDOWN + 0.1)
+    advance(bee, bee.wait + 0.1)
     assert bee.visible and bee.size == (36, 32)
     assert bee.offscreen
 
@@ -380,12 +384,13 @@ def test_artwork_is_portable_distinct_transparent_and_continuous():
 
 def test_real_runtime_cleanup_independence_and_pixels(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    runtime = LayeredRuntime(DEFAULT_MANIFEST)
-    control = LayeredRuntime(DEFAULT_MANIFEST)
+    runtime = LayeredRuntime(DEFAULT_MANIFEST, bee_interval=10.0)
+    control = LayeredRuntime(DEFAULT_MANIFEST, bee_interval=10.0)
     compositor = LayeredCompositor(DEFAULT_MANIFEST)
     runtime.set_geometry(VIEWPORT, FlowerLayout(runtime.pose_library.root_anchor))
     runtime.move_to(A)
     control.move_to(A)
+    runtime.bee.wait = control.bee.wait = 10.0
     advance(runtime, 14.5)
     advance(control, 14.5)
     visitors = [v for v in runtime.visuals() if isinstance(v, BeeVisual)]
@@ -406,7 +411,7 @@ def test_real_runtime_cleanup_independence_and_pixels(monkeypatch, tmp_path):
     assert runtime.visuals() == ()
     runtime.move_to(B)
     assert runtime.visuals()[0].identifier > max(identifiers)
-    assert runtime.bee.cooldown == COOLDOWN
+    assert runtime.bee.idle == 0
 
 
 def test_flight_has_transparent_padding_in_its_independent_rotated_bitmap():

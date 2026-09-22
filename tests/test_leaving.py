@@ -118,6 +118,9 @@ def visited() -> LayeredRuntime:
     )
     runtime.set_geometry(VIEWPORT, renderer.layout)
     runtime.move_to(A)
+    # The wait between visits is randomised; pin it so these seconds are the
+    # visit's rather than the wait's.
+    runtime.bee.interval = runtime.bee.wait = 10.0
     advance(runtime, 10)
     assert any(isinstance(visual, BeeVisual) for visual in runtime.visuals())
     return runtime

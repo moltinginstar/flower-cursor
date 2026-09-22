@@ -41,7 +41,8 @@ def visiting(seconds, *, seed=9):
     bee = IdleBee(random.Random(seed))
     bee.set_geometry(VIEWPORT, (50, 45))
     bee.move_to(CursorCell(8, 12))
-    bee.cooldown = 0.0
+    # The wait is randomised per visit; these measure the flight, not the wait.
+    bee.wait = 10.0
     remaining = seconds
     while remaining > 1e-9:
         step = min(1 / 120, remaining)
@@ -83,7 +84,8 @@ def test_the_bee_fades_out_through_the_edge_rather_than_being_cut_off(seed):
     bee = IdleBee(random.Random(seed))
     bee.set_geometry(VIEWPORT, (50, 45))
     bee.move_to(CursorCell(8, 12))
-    bee.cooldown = 0.0
+    # The wait is randomised per visit; these measure the flight, not the wait.
+    bee.wait = 10.0
     last, elapsed, seen = 0.0, 0.0, False
     while elapsed < 60:
         bee.update(1 / 60, HEAD)
@@ -295,10 +297,9 @@ while time.monotonic() < deadline:
 """
 _RUNNER = f"""
 import sys
-import flower_cursor.bee
 from flower_cursor.observer import main
-flower_cursor.bee.IDLE_DELAY = 0.05
-raise SystemExit(main(['--render', '--buzz', '--', sys.executable, '-c', {_CHILD!r}]))
+argv = ['--render', '--buzz', '--bee-every', '0.05', '--', sys.executable, '-c', {_CHILD!r}]
+raise SystemExit(main(argv))
 """
 # A stand-in for the optional extra: the real `_open_miniaudio` asks for these
 # names, so importing this exercises the same call the backend gets.
@@ -422,6 +423,7 @@ def test_an_unfocused_tab_keeps_no_bee_and_falls_silent():
     renderer = FlowerRenderer(runtime.pose_library, lambda _: None, canvas_scale=2)
     runtime.set_geometry(VIEWPORT, renderer.layout)
     runtime.move_to(CursorCell(8, 12))
+    runtime.bee.interval = runtime.bee.wait = 10.0
     # Fly on until it is both there and beating its wings - a landed bee has
     # them tucked, and a tucked bee is silent for reasons of its own.
     for _ in range(3600):

@@ -20,10 +20,15 @@ import sys
 from pathlib import Path
 
 from .settings import (
+    BEE_INTERVAL_DEFAULT,
+    BEE_INTERVAL_VARIABLE,
+    BEE_VARIABLE,
     BUZZ_VARIABLE,
     FLOWER_CATALOGUE,
     FLOWER_MANIFESTS,
     SPECIES_VARIABLE,
+    bee_enabled,
+    bee_interval,
     buzz_volume,
 )
 
@@ -151,13 +156,26 @@ def _environment_lines() -> list[tuple[str, str, str]]:
     disable = os.environ.get("FLOWER_CURSOR_DISABLE", "0")
     if disable != "0":
         lines.append((_WARN, "FLOWER_CURSOR_DISABLE", f"{disable!r}, so this window has no flower"))
+    # Both of these go through the wrapper's own readers, so the report says
+    # what a window will actually do rather than what the variable looks like.
+    visited = bee_enabled(False)
+    if not visited:
+        lines.append((_OK, BEE_VARIABLE, f"{os.environ[BEE_VARIABLE]}, so no bee visits"))
+    elif os.environ.get(BEE_INTERVAL_VARIABLE) is not None:
+        lines.append((_OK, BEE_INTERVAL_VARIABLE, f"a bee about every {bee_interval(None):g}s"))
+    else:
+        lines.append(
+            (_OK, BEE_INTERVAL_VARIABLE, f"unset, so a bee about every {BEE_INTERVAL_DEFAULT:g}s")
+        )
     buzz = os.environ.get(BUZZ_VARIABLE)
     if buzz is not None:
         # `buzz_volume` is what the wrapper itself would make of the value, so
         # asking it is the only way to report the volume a window will use
         # rather than the one the variable appears to ask for.
         volume = buzz_volume(None)
-        if volume > 0:
+        if volume > 0 and not visited:
+            lines.append((_WARN, BUZZ_VARIABLE, f"{buzz}, but there is no bee to buzz"))
+        elif volume > 0:
             lines.append((_OK, BUZZ_VARIABLE, f"{buzz}, and the sound extra is needed for it"))
         else:
             lines.append((_WARN, BUZZ_VARIABLE, f"{buzz!r} leaves the bee silent"))

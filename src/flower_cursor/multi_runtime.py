@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
-from .bee import IdleBee
+from .bee import NoBee
 from .layered import LayeredRuntime
 from .lifecycle import CursorCell
 from .runtime import FlowerVisual
@@ -28,13 +28,6 @@ _COPIES = -1
 # Retiring runtimes keep drawing while they wither, so they need slots of their
 # own that no live runtime can collide with.
 _FIRST_RETIRED_SLOT = -2
-
-
-class _NoBee(IdleBee):
-    """The visitor belongs to the real caret; secondary flowers do not get one."""
-
-    def _step(self, dt: float, head: tuple[float, float] | None) -> None:
-        return
 
 
 class MultiCursorFlowers:
@@ -107,7 +100,7 @@ class MultiCursorFlowers:
             self._retire(self._runtimes.pop())
         for _ in range(min(_BUILDS_PER_TICK, len(cells) - len(self._runtimes))):
             runtime = self._build(self._manifest)
-            runtime.bee = _NoBee()
+            runtime.bee = NoBee()
             self._runtimes.append(runtime)
         for runtime, cell in zip(self._runtimes, cells):
             runtime.move_to(cell)

@@ -13,6 +13,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .bee import DEFAULT_INTERVAL
+
 DEFAULT_SPECIES = "anemone"
 DEFAULT_MANIFEST = Path(__file__).with_name("assets") / "layered" / "manifest.json"
 
@@ -56,6 +58,21 @@ SPECIES_VARIABLE = "FLOWER_CURSOR_SPECIES"
 BUZZ_VARIABLE = "FLOWER_CURSOR_BUZZ"
 # What a bare `--buzz` means. Zero is off, and off is the default.
 BUZZ_DEFAULT = 1.0
+# Same reason again, for the bee itself: a window opened from a Kitty config
+# needs a way to say how often it is visited, and a way to say never. The
+# interval is the average stillness a visit waits for; the switch is separate
+# from it because zero seconds is a real setting - a bee the moment the caret
+# stops - and not a way of asking for no bee at all.
+BEE_INTERVAL_VARIABLE = "FLOWER_CURSOR_BEE_EVERY"
+BEE_VARIABLE = "FLOWER_CURSOR_BEE"
+BEE_INTERVAL_DEFAULT = DEFAULT_INTERVAL
+# A day is far longer than any window stays still; past that, the number is a
+# typo rather than a preference.
+BEE_INTERVAL_LIMIT = 86400.0
+# What `FLOWER_CURSOR_BEE` has to say to keep the bee away. Anything else is a
+# yes, so a variable left over from some other tool cannot silently empty the
+# screen of visitors.
+BEE_OFF_WORDS = frozenset({"0", "off", "no", "false", "none", "never"})
 
 
 def _fall_back[T](message: str, default: T) -> T:
@@ -103,6 +120,49 @@ def buzz_volume(argument: float | None) -> float:
     if not math.isfinite(value) or not 0.0 <= value <= 1.0:
         return _fall_back(f"buzz volume {value!r} is outside 0 to 1, staying silent", 0.0)
     return value
+
+
+def bee_interval(argument: float | None) -> float:
+    """How long the screen stays still before a bee visits, on average.
+
+    One number covers every wait: the first one after a window opens, the one
+    after the caret moves, and the one after a visit ends. An unreadable value
+    is worth a word but not a dead window, the same way an unknown flower name
+    is.
+    """
+    value = argument
+    if value is None:
+        text = os.environ.get(BEE_INTERVAL_VARIABLE, "").strip()
+        if not text:
+            return BEE_INTERVAL_DEFAULT
+        try:
+            value = float(text)
+        except ValueError:
+            return _fall_back(
+                f"unreadable {BEE_INTERVAL_VARIABLE} {text!r}, using "
+                f"{BEE_INTERVAL_DEFAULT:g} seconds",
+                BEE_INTERVAL_DEFAULT,
+            )
+    if not math.isfinite(value) or not 0.0 <= value <= BEE_INTERVAL_LIMIT:
+        return _fall_back(
+            f"bee interval {value!r} is outside 0 to {BEE_INTERVAL_LIMIT:g} seconds, using "
+            f"{BEE_INTERVAL_DEFAULT:g}",
+            BEE_INTERVAL_DEFAULT,
+        )
+    return value
+
+
+def bee_enabled(disabled: bool) -> bool:
+    """Whether this window gets a visitor at all.
+
+    `--no-bee` is the local answer and wins; otherwise the environment decides,
+    and saying nothing means yes. Only the words that plainly mean no turn the
+    bee off, so a variable set for some other purpose leaves the flower its
+    visitor.
+    """
+    if disabled:
+        return False
+    return os.environ.get(BEE_VARIABLE, "").strip().lower() not in BEE_OFF_WORDS
 
 
 def flower_help() -> str:

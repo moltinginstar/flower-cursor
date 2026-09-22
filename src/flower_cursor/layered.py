@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from .bee import BeePose, IdleBee
+from .bee import DEFAULT_INTERVAL, BeePose, IdleBee, NoBee
 from .bee_art import BeeCompositor
 from .compositor import blend_samples
 from .easing import require_duration, smoothstep
@@ -54,6 +54,8 @@ class LayeredRuntime:
         manifest: Path,
         *,
         bee_rng: random.Random | None = None,
+        bee: bool = True,
+        bee_interval: float = DEFAULT_INTERVAL,
         species: str | None = None,
     ) -> None:
         data = manifest_data(manifest)
@@ -62,7 +64,7 @@ class LayeredRuntime:
         self.flowers: list[SheddingFlower] = []
         self.active: SheddingFlower | None = None
         self._next_identifier = 1
-        self.bee = IdleBee(bee_rng)
+        self.bee = (IdleBee if bee else NoBee)(bee_rng, interval=bee_interval)
         self._bee_identifier = 0
         self._bee_flower: SheddingFlower | None = None
         self._heads = {p["name"]: p["head"] for p in data["poses"]}
