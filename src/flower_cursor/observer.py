@@ -11,6 +11,7 @@ import termios
 import time
 from pathlib import Path
 
+from .cursor_visibility import NativeCursorPolicy
 from .cwd_follower import CwdFollower
 from .focus import FocusFilter
 from .geometry import ViewportGeometry
@@ -250,6 +251,11 @@ class _Window:
         # the state query from our own record.
         self.tracker = MultiCursorTracker()
         self.output_arbiter.add_listener(self.tracker.handle)
+        # An application that draws its own caret hides the terminal's first,
+        # and the flower is the terminal's. The extra cursors an application
+        # declares are not: it asked for those to be drawn, so they keep their
+        # flowers either way.
+        self.native_cursor = NativeCursorPolicy()
         self.reply_filter = MultiCursorReplyFilter(self.tracker)
         self.cwd_follower = CwdFollower()
         self.renderer = (
@@ -272,9 +278,9 @@ class _Window:
     def on_cursor(self, cell: CursorCell) -> None:
         self.current_cell = cell
         self.tracker.main_cursor = cell
-        # A reply still in flight when focus was lost must not call the
-        # withering flower back to the caret.
-        if self.runtime is not None and self.focused:
+        # A reply still in flight when focus was lost, or when the caret was
+        # handed to the child, must not call the withering flower back.
+        if self.runtime is not None and self.drawing_caret:
             self.runtime.move_to(cell)
         if cell == self.previous:
             return
@@ -301,6 +307,35 @@ class _Window:
             return True
         return False
 
+    def on_visibility(self, visible: bool) -> None:
+        """Follow the child's DECTCEM requests, which say who draws the caret."""
+        if self.native_cursor.child_set(visible, time.monotonic()):
+            self._caret_ownership_changed()
+
+    def _caret_ownership_changed(self) -> None:
+        """Leave, or come back, now that the child has taken or dropped the caret.
+
+        Handing the caret over is the same departure as losing focus: the
+        flowers wither rather than blink out, the bee goes quiet, and the next
+        cursor report after the caret comes back buds a new flower.
+        """
+        if self.runtime is None or self.caret_is_ours():
+            return
+        if self.buzz is not None:
+            self.buzz.mute()
+        self.runtime.begin_withering()
+        if self.flowers is not None:
+            self.flowers.begin_withering()
+
+    def caret_is_ours(self) -> bool:
+        """Whether the caret is still the flower's to draw, or the child's now."""
+        return not self.native_cursor.child_draws_caret
+
+    @property
+    def drawing_caret(self) -> bool:
+        """Whether this window is drawing a caret at all: ours, and in view."""
+        return self.focused and self.caret_is_ours()
+
     def _viewport(self) -> ViewportGeometry | None:
         rows, columns, width, height = struct.unpack(
             "HHHH", fcntl.ioctl(self.output.fileno(), termios.TIOCGWINSZ, b"\0" * 8)
@@ -310,6 +345,9 @@ class _Window:
         return ViewportGeometry.measured(rows, columns, width, height)
 
     def on_tick(self, duration: float) -> None:
+        # A caret that has been gone longer than a redraw belongs to the child.
+        if self.native_cursor.poll(time.monotonic()):
+            self._caret_ownership_changed()
         if self.renderer is not None:
             self.renderer.flush_pending()
         suppression = self.tracker.take_suppression()
@@ -322,7 +360,7 @@ class _Window:
         self.runtime.update(duration)
         visuals = self.runtime.visuals()
         if self.flowers is not None:
-            if self.focused:
+            if self.drawing_caret:
                 self.flowers.update(self.tracker.cells, duration)
             else:
                 # Nothing is paired to a cursor any more, so the flowers left
@@ -333,7 +371,7 @@ class _Window:
         self.renderer.render(visuals, self.current_cell, duration, viewport=viewport)
         self.output.flush()
         if self.buzz is not None:
-            self.buzz.update(self.runtime.bee, audible=self.focused)
+            self.buzz.update(self.runtime.bee, audible=self.drawing_caret)
 
     def on_focus(self, is_focused: bool) -> None:
         self.focused = is_focused
@@ -380,7 +418,9 @@ class _Window:
                 stdin_filter=self.reply_filter.feed,
                 focus_filter=self.focus_filter,
                 on_focus=self.on_focus if drawing else None,
+                on_visibility=self.on_visibility if drawing else None,
                 wants_tick=self.wants_tick if drawing else None,
+                wants_cursor=self.caret_is_ours if drawing else None,
                 query_interval=self._interval,
                 tick_interval=self._tick_interval,
                 hide_cursor=drawing,

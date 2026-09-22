@@ -10,6 +10,7 @@ follows the DEC VT500-series parser described at https://vt100.net/emu/dec_ansi_
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -54,6 +55,13 @@ class FocusReporting:
 
 
 @dataclass(frozen=True, slots=True)
+class CursorVisibility:
+    """The child turned the text cursor (DECTCEM, mode 25) on or off."""
+
+    visible: bool
+
+
+@dataclass(frozen=True, slots=True)
 class DeviceStatusQuery:
     """The child asked the terminal for a status report."""
 
@@ -79,9 +87,17 @@ class MultipleCursors:
     parameters: bytes
 
 
-Event = AltScreenChange | DeviceStatusQuery | FocusReporting | MultipleCursors | ScreenErased
+Event = (
+    AltScreenChange
+    | CursorVisibility
+    | DeviceStatusQuery
+    | FocusReporting
+    | MultipleCursors
+    | ScreenErased
+)
 
 _ALT_SCREEN_MODES = {47, 1047, 1049}
+_CURSOR_VISIBILITY_MODE = 25
 _FOCUS_REPORTING_MODE = 1004
 # ED parameters that clear a screen region large enough for Kitty to drop the
 # extra cursors: the whole screen, the scrollback, and both together.
@@ -111,6 +127,10 @@ class VTFramer:
         self._intermediates = bytearray()
         self._string_escape = False
         self._graphics_transfer = False
+        # One sequence can carry several modes, and `_consume` reports one
+        # event per byte; anything a sequence says beyond its first event waits
+        # here until `feed` has somewhere to report it.
+        self._extra_events: deque[Event] = deque()
 
     @property
     def at_boundary(self) -> bool:
@@ -132,8 +152,13 @@ class VTFramer:
         """Advance the parser over *data*, reporting events as they dispatch."""
         for byte in data:
             event = self._consume(byte)
-            if event is not None and on_event is not None:
+            if on_event is None:
+                self._extra_events.clear()
+                continue
+            if event is not None:
                 on_event(event)
+            while self._extra_events:
+                on_event(self._extra_events.popleft())
 
     def _consume(self, byte: int) -> Event | None:
         # CAN and SUB abort whatever is in progress, from any state.
@@ -190,6 +215,9 @@ class VTFramer:
         elif 0x30 <= byte <= 0x7E:
             self._enter_ground()
             if byte == 0x63:  # c - RIS
+                # A reset restores every mode's default, and DECTCEM's default
+                # is a visible caret.
+                self._extra_events.append(CursorVisibility(visible=True))
                 return ScreenErased(full_reset=True)
         return None
 
@@ -285,10 +313,15 @@ class VTFramer:
 
         if final in (0x68, 0x6C) and private == 0x3F:  # h / l with ?
             values = _numeric_parameters(parameters)
-            # One sequence can carry several modes and only one event can be
-            # reported, so the screen switch wins: it decides whether anything
-            # is drawn at all. Focus reporting is re-asserted on that event too,
-            # which is what a bundled `?1004;1049l` would otherwise cost us.
+            if _CURSOR_VISIBILITY_MODE in values:
+                # Whether the child wants a caret is independent of everything
+                # else a mode sequence can say, so it is reported alongside
+                # rather than instead: `?25;1049l` means both.
+                self._extra_events.append(CursorVisibility(visible=final == 0x68))
+            # Of the rest only one event can be reported, so the screen switch
+            # wins: it decides whether anything is drawn at all. Focus reporting
+            # is re-asserted on that event too, which is what a bundled
+            # `?1004;1049l` would otherwise cost us.
             for value in values:
                 if value in _ALT_SCREEN_MODES:
                     return AltScreenChange(active=final == 0x68)
@@ -311,6 +344,8 @@ class VTFramer:
         if final == 0x70 and not private and intermediates == b"!":  # ! p - DECSTR
             # A soft reset drops the extra cursors exactly as RIS does; it
             # leaves the screen alone, so it is not reported as a full reset.
+            # DECTCEM is one of the modes it puts back, so the caret returns.
+            self._extra_events.append(CursorVisibility(visible=True))
             return ScreenErased(full_reset=False)
         return None
 

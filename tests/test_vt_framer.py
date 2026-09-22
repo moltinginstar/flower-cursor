@@ -2,7 +2,9 @@ import pytest
 
 from flower_cursor.vt_framer import (
     AltScreenChange,
+    CursorVisibility,
     DeviceStatusQuery,
+    FocusReporting,
     MultipleCursors,
     ScreenErased,
     VTFramer,
@@ -97,7 +99,7 @@ def test_alternate_screen_switches_are_reported() -> None:
     assert _events(b"\x1b[?1049h") == [AltScreenChange(active=True)]
     assert _events(b"\x1b[?1049l") == [AltScreenChange(active=False)]
     assert _events(b"\x1b[?47h") == [AltScreenChange(active=True)]
-    assert _events(b"\x1b[?25h") == []
+    assert _events(b"\x1b[?7h") == []
 
 
 def test_device_status_queries_are_reported_with_their_privacy() -> None:
@@ -146,7 +148,7 @@ def test_screen_erasures_that_drop_extra_cursors_are_reported() -> None:
     assert _events(b"\x1b[2J") == [ScreenErased(full_reset=False)]
     assert _events(b"\x1b[3J") == [ScreenErased(full_reset=False)]
     assert _events(b"\x1b[22J") == [ScreenErased(full_reset=False)]
-    assert _events(b"\x1bc") == [ScreenErased(full_reset=True)]
+    assert _events(b"\x1bc") == [ScreenErased(full_reset=True), CursorVisibility(visible=True)]
     # A line-scoped erase leaves the extra cursors alone.
     assert _events(b"\x1b[0J") == []
     assert _events(b"\x1b[J") == []
@@ -157,4 +159,31 @@ def test_screen_erasures_that_drop_extra_cursors_are_reported() -> None:
     assert _events(b"\x1b[?3J") == [ScreenErased(full_reset=False)]
     assert _events(b"\x1b[?0J") == []
     # DECSTR leaves the screen itself alone, so it is not a full reset.
-    assert _events(b"\x1b[!p") == [ScreenErased(full_reset=False)]
+    assert _events(b"\x1b[!p") == [
+        ScreenErased(full_reset=False),
+        CursorVisibility(visible=True),
+    ]
+
+
+def test_cursor_visibility_requests_are_reported() -> None:
+    assert _events(b"\x1b[?25l") == [CursorVisibility(visible=False)]
+    assert _events(b"\x1b[?25h") == [CursorVisibility(visible=True)]
+    # Nothing else in the sequence hides it: a mode list says all of what it says.
+    assert _events(b"\x1b[?1049;25l") == [
+        AltScreenChange(active=False),
+        CursorVisibility(visible=False),
+    ]
+    assert _events(b"\x1b[?12;25h") == [CursorVisibility(visible=True)]
+    assert _events(b"\x1b[?1004;25h") == [
+        FocusReporting(enabled=True),
+        CursorVisibility(visible=True),
+    ]
+    # Split across reads, and the unmarked mode 25 that is not DECTCEM at all.
+    assert _events(b"\x1b[?2", b"5l") == [CursorVisibility(visible=False)]
+    assert _events(b"\x1b[25l") == []
+    # A reset puts the caret back, because a visible caret is DECTCEM's default.
+    assert _events(b"\x1b[?25l\x1bc") == [
+        CursorVisibility(visible=False),
+        ScreenErased(full_reset=True),
+        CursorVisibility(visible=True),
+    ]
