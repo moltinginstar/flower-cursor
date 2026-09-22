@@ -43,6 +43,19 @@ class _CapturedPetal:
     velocity: tuple[float, float, float]
 
 
+# A layer's pixels and where their top-left corner sits on the canvas. Layers
+# are kept cropped to what they draw, so every one carries its own offset.
+@dataclass(frozen=True, slots=True)
+class _Placed:
+    image: Image.Image
+    offset: tuple[int, int]
+
+
+# Bicubic sampling reads two pixels either side of a point and clamps at the
+# image's edge, so a crop needs two transparent pixels around its content for
+# every sample taken from it to match one taken from the whole canvas.
+_BICUBIC_REACH = 2
+
 # Petals are identified per flower, so the owning flower's identifier is part
 # of the key: two flowers shed a petal numbered 1 apiece.
 type _FlightKey = tuple[int, int]
@@ -202,8 +215,16 @@ class LayeredCompositor:
         self.right = data["projection_right"]
         self.down = data["projection_down"]
         self.size = size
+        # A manifest without crops, or a compositor drawing at another size
+        # than the crops were measured on, keeps every layer whole.
+        crops = data.get("crops", {"canvas": None, "layers": {}})
+        self._crops: dict[str, tuple[int, int, int, int]] = (
+            {layer: tuple(box) for layer, box in crops["layers"].items()}
+            if crops["canvas"] == [size, size]
+            else {}
+        )
         self._flights: dict[_FlightKey, _CapturedPetal | None] = {}
-        self._images: dict[Path, Image.Image] = {}
+        self._images: dict[tuple[Path, str], Image.Image] = {}
         self._bee = BeeCompositor()
 
     @property
@@ -216,28 +237,73 @@ class LayeredCompositor:
         """
         return 2
 
-    def _image(self, path: Path) -> Image.Image:
+    def _window(self, layer: str) -> tuple[int, int, int, int]:
+        """The part of the canvas this layer's images are kept for."""
+        crop = self._crops.get(layer)
+        if crop is None:
+            return (0, 0, self.size, self.size)
+        left, top, right, bottom = crop
+        reach = _BICUBIC_REACH
+        return (
+            max(0, left - reach),
+            max(0, top - reach),
+            min(self.size, right + reach),
+            min(self.size, bottom + reach),
+        )
+
+    def _image(self, path: Path, layer: str) -> Image.Image:
         # Kept per compositor rather than in an `lru_cache` on the method: that
         # cache is shared by every instance and keyed on `self`, so it both
         # splits one budget across compositors and keeps each of them alive for
         # the life of the process.
-        cached = self._images.get(path)
+        key = (path, layer)
+        cached = self._images.get(key)
         if cached is None:
             with Image.open(path) as image:
                 result = image.convert("RGBa")
-                cached = (
-                    result
-                    if result.size == (self.size, self.size)
-                    else result.resize((self.size, self.size), Image.Resampling.LANCZOS)
-                )
-            self._images[path] = cached
+            crop = self._crops.get(layer)
+            if crop is None:
+                if result.size != (self.size, self.size):
+                    result = result.resize((self.size, self.size), Image.Resampling.LANCZOS)
+                cached = result
+            else:
+                # A crop that misses content would clip the flower without a
+                # word, so assets that disagree with their manifest are refused.
+                bounds = result.getchannel(3).getbbox()
+                if result.size != (self.size, self.size) or (
+                    bounds is not None
+                    and not (
+                        crop[0] <= bounds[0]
+                        and crop[1] <= bounds[1]
+                        and bounds[2] <= crop[2]
+                        and bounds[3] <= crop[3]
+                    )
+                ):
+                    raise ValueError(
+                        f"{path.name} does not fit its {layer!r} crop {list(crop)}; "
+                        "re-run tools/prepare_layered_assets.py --crops-only"
+                    )
+                cached = result.crop(self._window(layer))
+            self._images[key] = cached
         return cached
 
-    def _blend(self, samples: Samples, layer: str) -> Image.Image:
-        return blend_samples(
+    def _blend(self, samples: Samples, layer: str) -> _Placed:
+        image = blend_samples(
             samples,
-            lambda asset: self._image(self.directory / self.records[asset.name]["layers"][layer]),
+            lambda asset: self._image(
+                self.directory / self.records[asset.name]["layers"][layer], layer
+            ),
         )
+        left, top, _, _ = self._window(layer)
+        return _Placed(image, (left, top))
+
+    def _whole(self, layer: _Placed) -> Image.Image:
+        """The layer on a canvas of its own, for the one blend that needs one."""
+        if layer.image.size == (self.size, self.size):
+            return layer.image
+        canvas = Image.new("RGBa", (self.size, self.size))
+        canvas.paste(layer.image, layer.offset)
+        return canvas
 
     def _vector(self, samples: Samples, key: str, layer: str | None = None):
         values = [(self.records[a.name][key], w) for a, w in samples]
@@ -247,39 +313,49 @@ class LayeredCompositor:
             sum(value[i] * weight for value, weight in values) for i in range(len(values[0][0]))
         )
 
-    def _scale(self, image: Image.Image, anchor, amount: float) -> Image.Image:
+    def _scale(self, layer: _Placed, anchor, amount: float) -> _Placed | None:
+        """The layer shrunk toward `anchor`, or None if nothing of it is left.
+
+        Only the patch the shrunk content covers is drawn, and it is placed
+        where that content lands, which need not be inside the layer's own
+        crop: the anchor can lie outside it.
+        """
         if amount <= 0.001:
-            return Image.new("RGBa", image.size)
+            return None
         if abs(amount - 1) < 1e-6:
-            return image
-        result = Image.new("RGBa", image.size)
-        bounds = image.getchannel(3).getbbox()
-        if bounds is None:
-            return result
+            return layer
+        image = layer.image
+        found = image.getchannel(3).getbbox()
+        if found is None:
+            return None
+        dx, dy = layer.offset
+        bounds = (found[0] + dx, found[1] + dy, found[2] + dx, found[3] + dy)
         x, y = (v * self.size for v in anchor)
         left = max(0, math.floor(x + (bounds[0] - x) * amount) - 2)
         top = max(0, math.floor(y + (bounds[1] - y) * amount) - 2)
         right = min(self.size, math.ceil(x + (bounds[2] - x) * amount) + 2)
         bottom = min(self.size, math.ceil(y + (bounds[3] - y) * amount) + 2)
         if right <= left or bottom <= top:
-            return result
+            return None
         inverse = 1 / amount
         patch = image.transform(
             (right - left, bottom - top),
             Image.Transform.AFFINE,
-            (inverse, 0, (left - x) * inverse + x, 0, inverse, (top - y) * inverse + y),
+            (inverse, 0, (left - x) * inverse + x - dx, 0, inverse, (top - y) * inverse + y - dy),
             Image.Resampling.BICUBIC,
         )
-        result.paste(patch, (left, top))
-        return result
+        return _Placed(patch, (left, top))
 
     def _capture(self, flight: PetalFlight) -> _CapturedPetal | None:
         samples = self.library.sample_animated(flight.pose)
         previous = self.library.sample_animated(flight.previous_pose)
         layer = self.metadata.shedding_groups[flight.index].layer
-        image = self._scale(
+        scaled = self._scale(
             self._blend(samples, layer), self._vector(samples, "head"), flight.growth
         )
+        if scaled is None:
+            return None
+        image = scaled.image
         bounds = image.getchannel(3).getbbox()
         if bounds is None:
             return None
@@ -289,7 +365,8 @@ class LayeredCompositor:
             center = self._vector(state, "centers", layer)
             centers.append(tuple(h + (c - h) * flight.growth for h, c in zip(head, center)))
         velocity = tuple((a - b) / flight.sample_duration for a, b in zip(*centers))
-        center = ((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2)
+        dx, dy = scaled.offset
+        center = ((bounds[0] + bounds[2]) / 2 + dx, (bounds[1] + bounds[3]) / 2 + dy)
         return _CapturedPetal(image.crop(bounds), center, velocity)
 
     def _draw_flight(self, canvas: Image.Image, owner: int, flight: PetalFlight) -> None:
@@ -338,9 +415,11 @@ class LayeredCompositor:
         flower = visual.flower
         intact = min(flower.head.value, *(p.value for p in flower.petals))
         if not flower.flower.dead and intact >= 0.9999:
-            canvas = self._blend(samples, "complete").convert("RGBA")
+            complete = self._blend(samples, "complete")
+            canvas.paste(complete.image.convert("RGBA"), complete.offset)
         elif not flower.flower.dead:
-            canvas.alpha_composite(self._blend(samples, "body").convert("RGBA"))
+            body = self._blend(samples, "body")
+            canvas.alpha_composite(body.image.convert("RGBA"), body.offset)
             head = self._vector(samples, "head")
             layers = [("head", flower.head.value)]
             layers.extend(
@@ -354,14 +433,15 @@ class LayeredCompositor:
                 reverse=True,
             )
             for layer, amount in layers:
-                if amount > 0.001:
-                    canvas.alpha_composite(
-                        self._scale(self._blend(samples, layer), head, amount).convert("RGBA")
-                    )
+                if amount <= 0.001:
+                    continue
+                scaled = self._scale(self._blend(samples, layer), head, amount)
+                if scaled is not None:
+                    canvas.alpha_composite(scaled.image.convert("RGBA"), scaled.offset)
             if intact > 0.9:
                 blend = smoothstep((intact - 0.9) / 0.1)
                 canvas = Image.blend(
-                    canvas.convert("RGBa"), self._blend(samples, "complete"), blend
+                    canvas.convert("RGBa"), self._whole(self._blend(samples, "complete")), blend
                 ).convert("RGBA")
         for flight in flower.flights:
             self._draw_flight(canvas, visual.identifier, flight)

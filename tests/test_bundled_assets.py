@@ -6,6 +6,7 @@ from PIL import Image
 
 from flower_cursor import layered, observer
 from flower_cursor.lifecycle import CursorCell
+from flower_cursor.settings import FLOWER_CATALOGUE
 
 
 def test_bundled_manifest_contains_complete_portable_runtime_assets():
@@ -24,11 +25,28 @@ def test_bundled_manifest_contains_complete_portable_runtime_assets():
             files.add(name)
     assert len(files) == 1215
     assert files == {path.name for path in manifest.parent.glob("*.png")}
-    for name in files:
-        with Image.open(manifest.parent / name) as image:
-            assert image.mode == "RGBA"
-            assert image.size == (256, 256)
-            image.verify()
+    crops = data["crops"]["layers"]
+    for pose in data["poses"]:
+        for layer, name in pose["layers"].items():
+            with Image.open(manifest.parent / name) as image:
+                image.verify()
+            with Image.open(manifest.parent / name) as image:
+                assert image.mode == "RGBA"
+                assert image.size == (256, 256)
+                bounds = image.getchannel("A").getbbox()
+            if bounds is not None:
+                left, top, right, bottom = crops[layer]
+                assert left <= bounds[0] and top <= bounds[1]
+                assert bounds[2] <= right and bounds[3] <= bottom
+
+
+@pytest.mark.parametrize("spec", FLOWER_CATALOGUE, ids=lambda spec: spec.name)
+def test_every_bundled_species_keeps_only_the_rectangle_each_layer_draws(spec):
+    data = json.loads(spec.manifest.read_text())
+    assert data["crops"]["canvas"] == [256, 256]
+    names = {layer for pose in data["poses"] for layer in pose["layers"]}
+    assert set(data["crops"]["layers"]) == names
+    assert layered.LayeredCompositor(spec.manifest, species=spec.name)._crops
 
 
 def test_bundled_runtime_renders_outside_the_checkout(monkeypatch, tmp_path):

@@ -1,5 +1,6 @@
 import json
 import math
+import shutil
 from pathlib import Path
 
 import pytest
@@ -156,10 +157,12 @@ def test_flight_sprite_is_frozen_across_return_and_drawn_after_stalk_death(manif
     assert not compositor._flights
 
 
-@pytest.mark.parametrize("amount", [0.17, 0.5, 0.95])
-def test_bounded_scaling_matches_full_canvas_affine(manifest, amount):
-    compositor = LayeredCompositor(manifest)
-    image = compositor._image(manifest.parent / "tile.png")
+@pytest.mark.parametrize("cropped", [False, True])
+@pytest.mark.parametrize("amount", [0.17, 0.5, 0.95, 1.4])
+def test_bounded_scaling_matches_full_canvas_affine(manifest, amount, cropped):
+    compositor = LayeredCompositor(_cropped(manifest) if cropped else manifest, size=32)
+    with Image.open(manifest.parent / "tile.png") as tile:
+        image = tile.convert("RGBa")
     anchor = (0.48, 0.22)
     x, y = (v * compositor.size for v in anchor)
     inverse = 1 / amount
@@ -169,9 +172,60 @@ def test_bounded_scaling_matches_full_canvas_affine(manifest, amount):
         (inverse, 0, x * (1 - inverse), 0, inverse, y * (1 - inverse)),
         Image.Resampling.BICUBIC,
     )
-    actual = compositor._scale(image, anchor, amount)
+    layer = compositor._blend(_one(compositor), "head")
+    actual = compositor._whole(compositor._scale(layer, anchor, amount))
     difference = ImageChops.difference(actual.convert("RGBA"), reference.convert("RGBA"))
     assert max(high for low, high in difference.getextrema()) <= 1
+
+
+def _cropped(manifest: Path, box=(14, 5, 18, 10)) -> Path:
+    # A copy beside the original rather than an edit to it: manifests are
+    # parsed once per path and cached.
+    directory = manifest.parent / "cropped"
+    directory.mkdir()
+    shutil.copy(manifest.parent / "tile.png", directory)
+    data = json.loads(manifest.read_text())
+    data["crops"] = {
+        "canvas": [32, 32],
+        "layers": {name: list(box) for name in data["poses"][0]["layers"]},
+    }
+    (directory / "manifest.json").write_text(json.dumps(data))
+    return directory / "manifest.json"
+
+
+def _one(compositor: LayeredCompositor):
+    return ((compositor.library.assets[0], 1.0),)
+
+
+def test_crops_keep_only_the_drawn_rectangle_and_draw_the_same_frames(manifest):
+    frames = []
+    for crop in (False, True):
+        path = _cropped(manifest) if crop else manifest
+        runtime = LayeredRuntime(path, bee=False)
+        compositor = LayeredCompositor(path, size=32)
+        drawn = []
+        runtime.move_to(A)
+        for step in range(150):
+            if step == 90:
+                runtime.move_to(B)
+            runtime.update(1 / 60)
+            drawn.extend(compositor.frame(v).tobytes() for v in runtime.visuals())
+        frames.append(drawn)
+        if crop:
+            assert {image.size for image in compositor._images.values()} == {(8, 9)}
+        else:
+            assert compositor._crops == {}
+    assert frames[0] == frames[1]
+
+
+def test_crop_that_misses_content_is_refused(manifest):
+    compositor = LayeredCompositor(_cropped(manifest, (14, 5, 18, 9)), size=32)
+    with pytest.raises(ValueError, match="does not fit its 'complete' crop"):
+        compositor._blend(_one(compositor), "complete")
+
+
+def test_crops_apply_only_at_the_size_they_were_measured_on(manifest):
+    assert LayeredCompositor(_cropped(manifest), size=48)._crops == {}
 
 
 @pytest.mark.parametrize("duration", [-1, float("inf"), float("nan")])
