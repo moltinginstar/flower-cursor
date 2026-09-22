@@ -13,6 +13,7 @@ from flower_cursor.observer import (
     FLOWER_MANIFESTS,
     build_parser,
 )
+from flower_cursor.settings import resolve
 from flower_cursor.shedding import SheddingFlower
 from flower_cursor.species import LEGACY_CORAL_SHEDDING_ORDER, metadata_from_manifest
 
@@ -135,18 +136,14 @@ def test_flower_descriptions_are_user_facing_and_name_the_poppy_correctly() -> N
     assert all(description in help_text for description in FLOWER_DESCRIPTIONS.values())
 
 
-def test_cli_accepts_each_public_flower_and_rejects_coral() -> None:
-    parser = build_parser()
-    assert [parser.parse_args(["--flower", name]).flower for name in PUBLIC_FLOWERS] == list(
+def test_the_cli_grows_each_public_flower_and_falls_back_from_coral(capsys) -> None:
+    assert [resolve({"species": name}, {}).species_name for name in PUBLIC_FLOWERS] == list(
         PUBLIC_FLOWERS
     )
-    with pytest.raises(SystemExit):
-        parser.parse_args(["--flower", "coral"])
-
-
-def test_explicit_flower_and_manifest_conflict_is_rejected() -> None:
-    with pytest.raises(SystemExit):
-        build_parser().parse_args(["--flower", "anemone", "--shedding-manifest", "custom.json"])
+    # Coral was withdrawn, and a name nobody grows any more is a typo: one
+    # line on stderr rather than a window that refuses to open.
+    assert resolve({"species": "coral"}, {}).species_name == DEFAULT_SPECIES
+    assert "coral" in capsys.readouterr().err
 
 
 def test_manifest_species_conflict_is_rejected() -> None:

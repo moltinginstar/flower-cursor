@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from flower_cursor import check
-from flower_cursor.settings import FlowerSpec
+from flower_cursor.settings import KITTY_SHELL_VARIABLE, FlowerSpec, resolve
 
 BLOCK = f"""{check.BEGIN_MARKER}
 # Grown by flower-cursor.
@@ -72,42 +72,67 @@ def test_the_config_directory_falls_back_to_xdg(
     assert check.kitty_config_path() == tmp_path / "kitty" / "kitty.conf"
 
 
-def test_an_unknown_species_is_reported_as_falling_back(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FLOWER_CURSOR_SPECIES", "tulip")
-    statuses = {label: status for status, label, _ in check._environment_lines()}
-    assert statuses["FLOWER_CURSOR_SPECIES"] == check._WARN
+def rows(**given: str) -> dict[str, tuple[str, str]]:
+    """The settings part of the report, by the setting it is about."""
+    lines = check._setting_lines(resolve(given, {}))
+    return {label: (status, detail) for status, label, detail in lines}
 
 
-def test_a_known_species_is_reported_plainly(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_known_species_is_reported_with_the_spelling_that_asked_for_it() -> None:
+    status, detail = rows(species="crocus")["species"]
+    assert status == check._OK
+    assert detail == "crocus (from --species)"
+
+
+def test_a_variable_is_reported_as_the_variable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FLOWER_CURSOR_SPECIES", "crocus")
-    lines = {label: (status, detail) for status, label, detail in check._environment_lines()}
-    assert lines["FLOWER_CURSOR_SPECIES"] == (check._OK, "crocus")
+    lines = check._setting_lines(resolve())
+    assert ("species", "crocus (from FLOWER_CURSOR_SPECIES)") in [
+        (label, detail) for _, label, detail in lines
+    ]
 
 
-def test_a_buzz_volume_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FLOWER_CURSOR_BUZZ", "0.4")
-    lines = {label: status for status, label, _ in check._environment_lines()}
-    assert lines["FLOWER_CURSOR_BUZZ"] == check._OK
+def test_an_unknown_species_is_reported_as_the_default_it_fell_back_to(capsys) -> None:
+    # The report says what will grow, not what was asked for: the unreadable
+    # value is already gone by the time anything is rendered.
+    status, detail = rows(species="tulip")["species"]
+    assert status == check._OK
+    assert detail == "anemone (from the default)"
+    assert "tulip" in capsys.readouterr().err
 
 
-def test_an_unreadable_buzz_volume_is_reported_as_silence(
+def test_the_bee_is_reported_in_the_words_the_setting_is_about() -> None:
+    assert rows(bee="90")["bee"][1] == "a bee about every 90s (from --bee)"
+    assert rows(bee="off")["bee"][1] == "no bee visits (from --bee)"
+
+
+def test_a_buzz_volume_is_reported() -> None:
+    status, detail = rows(buzz="0.4")["buzz"]
+    assert status == check._OK
+    assert detail.startswith("0.4")
+
+
+def test_an_unreadable_buzz_volume_is_reported_as_the_silence_it_became(capsys) -> None:
+    assert rows(buzz="loud")["buzz"][1] == "silent (from the default)"
+    assert "loud" in capsys.readouterr().err
+
+
+def test_a_buzz_with_no_bee_to_make_it_is_a_warning() -> None:
+    status, detail = rows(buzz="0.4", bee="off")["buzz"]
+    assert status == check._WARN
+    assert "no bee" in detail
+
+
+def test_a_development_knob_is_only_reported_once_someone_touches_it() -> None:
+    assert "poll-interval" not in rows()
+    assert rows(**{"poll-interval": "0.5"})["poll-interval"][1] == "0.5 (from --poll-interval)"
+
+
+def test_the_nested_shell_integration_is_reported_when_kitty_asked_for_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("FLOWER_CURSOR_BUZZ", "loud")
-    lines = {label: status for status, label, _ in check._environment_lines()}
-    assert lines["FLOWER_CURSOR_BUZZ"] == check._WARN
-
-
-def test_a_buzz_of_zero_is_reported_as_silence(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FLOWER_CURSOR_BUZZ", "0")
-    lines = {label: status for status, label, _ in check._environment_lines()}
-    assert lines["FLOWER_CURSOR_BUZZ"] == check._WARN
-
-
-def test_a_disabled_window_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FLOWER_CURSOR_DISABLE", "1")
-    labels = [label for _, label, _ in check._environment_lines()]
-    assert "FLOWER_CURSOR_DISABLE" in labels
+    monkeypatch.setenv(KITTY_SHELL_VARIABLE, "on")
+    assert KITTY_SHELL_VARIABLE in rows()
 
 
 def test_a_missing_flower_breaks_the_report(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,9 +152,9 @@ def installed(monkeypatch: pytest.MonkeyPatch) -> None:
     terminal emulator to find out whether we can read a config file.
     """
     monkeypatch.setattr(check, "_kitty_version", lambda: "kitty 0.49.0")
-    monkeypatch.delenv("FLOWER_CURSOR_DISABLE", raising=False)
-    monkeypatch.delenv("FLOWER_CURSOR_SPECIES", raising=False)
-    monkeypatch.delenv("FLOWER_CURSOR_BUZZ", raising=False)
+    for setting in check.SETTINGS:
+        monkeypatch.delenv(setting.variable, raising=False)
+    monkeypatch.delenv(KITTY_SHELL_VARIABLE, raising=False)
     # Only the flowers whose assets are committed, so this says something about
     # the report rather than about who has rendered what lately.
     monkeypatch.setattr(
@@ -162,14 +187,14 @@ def test_kitty_missing_altogether_breaks_the_report(monkeypatch: pytest.MonkeyPa
 
 def test_the_report_refuses_to_promise_the_graphics_protocol_works(installed: None) -> None:
     stream = io.StringIO()
-    assert check.run_check(stream) == 0
+    assert check.run_check(stream=stream) == 0
     assert "does not test" in stream.getvalue()
 
 
 def test_a_broken_install_exits_nonzero(installed: None, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(check, "launcher_path", lambda: None)
     stream = io.StringIO()
-    assert check.run_check(stream) == 1
+    assert check.run_check(stream=stream) == 1
     assert "will not run" in stream.getvalue()
 
 

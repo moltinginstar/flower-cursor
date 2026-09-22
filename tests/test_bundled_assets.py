@@ -46,10 +46,10 @@ def test_bundled_runtime_renders_outside_the_checkout(monkeypatch, tmp_path):
     assert compositor.frame(runtime.visuals()[0]).getchannel("A").getbbox() is not None
 
 
-@pytest.mark.parametrize(
-    "args", [[], ["--render"], ["--shedding-manifest", str(observer.DEFAULT_MANIFEST)]]
-)
-def test_observer_rendering_defaults_and_manifest_override(monkeypatch, args):
+# Nothing to opt into any more: a window either grows the bundled flower or
+# the artwork it was pointed at, and both of them draw.
+@pytest.mark.parametrize("args", [[], ["--species", str(observer.DEFAULT_MANIFEST)]])
+def test_observer_grows_the_default_flower_or_the_manifest_it_was_given(monkeypatch, args):
     created = []
     original = layered.LayeredRuntime
 
@@ -60,15 +60,10 @@ def test_observer_rendering_defaults_and_manifest_override(monkeypatch, args):
 
     def run(command, **kwargs):
         assert command == ["example-shell"]
-        if args:
-            assert created[0][0] == observer.DEFAULT_MANIFEST
-            kwargs["on_cursor"](CursorCell(4, 8))
-            assert created[0][1].active is not None
-            assert kwargs["hide_cursor"]
-        else:
-            assert created == []
-            assert kwargs["on_tick"] is None
-            assert not kwargs["hide_cursor"]
+        assert created[0][0] == observer.DEFAULT_MANIFEST
+        kwargs["on_cursor"](CursorCell(4, 8))
+        assert created[0][1].active is not None
+        assert kwargs["hide_cursor"]
         return 0
 
     monkeypatch.setattr(layered, "LayeredRuntime", create)
@@ -76,9 +71,9 @@ def test_observer_rendering_defaults_and_manifest_override(monkeypatch, args):
     assert observer.main([*args, "--", "example-shell"]) == 0
 
 
-def test_console_entrypoint_enables_rendering_and_preserves_arguments(monkeypatch):
+def test_the_console_entrypoint_passes_its_arguments_through_untouched(monkeypatch):
     seen = []
     monkeypatch.setattr(observer.sys, "argv", ["flower-cursor", "--", "zsh", "-l"])
     monkeypatch.setattr(observer, "main", lambda args: seen.append(args) or 7)
     assert observer.shell_main() == 7
-    assert seen == [["--render", "--", "zsh", "-l"]]
+    assert seen == [["--", "zsh", "-l"]]

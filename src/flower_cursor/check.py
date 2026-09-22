@@ -18,18 +18,14 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import TextIO
 
 from .settings import (
-    BEE_INTERVAL_DEFAULT,
-    BEE_INTERVAL_VARIABLE,
-    BEE_VARIABLE,
-    BUZZ_VARIABLE,
     FLOWER_CATALOGUE,
-    FLOWER_MANIFESTS,
-    SPECIES_VARIABLE,
-    bee_enabled,
-    bee_interval,
-    buzz_volume,
+    KITTY_SHELL_VARIABLE,
+    SETTINGS,
+    Settings,
+    resolve,
 )
 
 # The same settings `install.sh` writes, so the report describes the install
@@ -142,48 +138,53 @@ def _unmanaged_shell(text: str) -> str | None:
     return None
 
 
-def _environment_lines() -> list[tuple[str, str, str]]:
+def _setting_lines(settings: Settings) -> list[tuple[str, str, str]]:
+    """What this window was told, and which spelling told it.
+
+    Every row comes from the resolved settings rather than from the raw
+    variables, so the report says what a window will actually do rather than
+    what a config file appears to ask for - an unreadable value has already
+    been replaced by the default, and this says so.
+    """
     lines = []
-    species = os.environ.get(SPECIES_VARIABLE)
-    if species is None:
-        lines.append((_OK, SPECIES_VARIABLE, "unset, so the default flower grows"))
-    elif species in FLOWER_MANIFESTS:
-        lines.append((_OK, SPECIES_VARIABLE, species))
-    else:
-        lines.append(
-            (_WARN, SPECIES_VARIABLE, f"{species!r} is not a flower; the default grows instead")
-        )
-    disable = os.environ.get("FLOWER_CURSOR_DISABLE", "0")
-    if disable != "0":
-        lines.append((_WARN, "FLOWER_CURSOR_DISABLE", f"{disable!r}, so this window has no flower"))
-    # Both of these go through the wrapper's own readers, so the report says
-    # what a window will actually do rather than what the variable looks like.
-    visited = bee_enabled(False)
-    if not visited:
-        lines.append((_OK, BEE_VARIABLE, f"{os.environ[BEE_VARIABLE]}, so no bee visits"))
-    elif os.environ.get(BEE_INTERVAL_VARIABLE) is not None:
-        lines.append((_OK, BEE_INTERVAL_VARIABLE, f"a bee about every {bee_interval(None):g}s"))
-    else:
-        lines.append(
-            (_OK, BEE_INTERVAL_VARIABLE, f"unset, so a bee about every {BEE_INTERVAL_DEFAULT:g}s")
-        )
-    buzz = os.environ.get(BUZZ_VARIABLE)
-    if buzz is not None:
-        # `buzz_volume` is what the wrapper itself would make of the value, so
-        # asking it is the only way to report the volume a window will use
-        # rather than the one the variable appears to ask for.
-        volume = buzz_volume(None)
-        if volume > 0 and not visited:
-            lines.append((_WARN, BUZZ_VARIABLE, f"{buzz}, but there is no bee to buzz"))
-        elif volume > 0:
-            lines.append((_OK, BUZZ_VARIABLE, f"{buzz}, and the sound extra is needed for it"))
-        else:
-            lines.append((_WARN, BUZZ_VARIABLE, f"{buzz!r} leaves the bee silent"))
+    for setting in SETTINGS:
+        if setting.development and settings.sources[setting.name] == "default":
+            # Knobs nobody touched are noise in a report about why nothing grew.
+            continue
+        source = settings.sources[setting.name]
+        value = getattr(settings, setting.attribute)
+        detail = _value_text(setting.name, value)
+        where = "the default" if source == "default" else source
+        lines.append((_OK, setting.name, f"{detail} (from {where})"))
+    if settings.buzz > 0 and settings.bee is None:
+        lines.append((_WARN, "buzz", "asked for, but there is no bee to buzz"))
+    if os.environ.get(KITTY_SHELL_VARIABLE):
+        lines.append((_OK, KITTY_SHELL_VARIABLE, "set, so Kitty's shell integration is nested"))
     return lines
 
 
-def report() -> tuple[list[tuple[str, str, str]], bool]:
+def _value_text(name: str, value: object) -> str:
+    """One setting's value, in the words the setting is about."""
+    match name, value:
+        case "species", _:
+            return f"{value}"
+        case "bee", None:
+            return "no bee visits"
+        case "bee", _:
+            return f"a bee about every {value:g}s"
+        case "buzz", 0.0:
+            return "silent"
+        case "buzz", _:
+            return f"{value:g}, and the sound extra is needed for it"
+        case "log", None:
+            return "not written"
+        case _, _:
+            return f"{value}"
+
+
+def report(settings: Settings | None = None) -> tuple[list[tuple[str, str, str]], bool]:
     """Every check, and whether anything in it stops flowers growing."""
+    settings = resolve() if settings is None else settings
     lines: list[tuple[str, str, str]] = []
 
     version = _kitty_version()
@@ -233,20 +234,20 @@ def report() -> tuple[list[tuple[str, str, str]], bool]:
                 )
             )
     else:
-        settings = "; ".join(
+        configured = "; ".join(
             line.strip()
             for line in block.splitlines()
             if line.strip() and not line.lstrip().startswith("#")
         )
-        lines.append((_OK, "kitty.conf", settings or "configured but empty"))
+        lines.append((_OK, "kitty.conf", configured or "configured but empty"))
 
-    lines.extend(_environment_lines())
+    lines.extend(_setting_lines(settings))
     return lines, any(status == _BAD for status, _, _ in lines)
 
 
-def run_check(stream: object = None) -> int:
+def run_check(settings: Settings | None = None, *, stream: TextIO | None = None) -> int:
     out = stream if stream is not None else sys.stdout
-    lines, broken = report()
+    lines, broken = report(settings)
     width = max(len(label) for _, label, _ in lines)
     for status, label, detail in lines:
         print(f"{_MARKS[status]} {label.ljust(width)}  {detail}", file=out)

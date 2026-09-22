@@ -18,13 +18,7 @@ from flower_cursor.geometry import ViewportGeometry
 from flower_cursor.graphics_renderer import FlowerRenderer
 from flower_cursor.layered import LayeredRuntime
 from flower_cursor.lifecycle import CursorCell
-from flower_cursor.observer import (
-    BUZZ_DEFAULT,
-    BUZZ_VARIABLE,
-    DEFAULT_MANIFEST,
-    build_parser,
-    buzz_volume,
-)
+from flower_cursor.observer import DEFAULT_MANIFEST
 
 VIEWPORT = ViewportGeometry(30, 100, 1600, 990)
 HEAD = (192.0, 250.0)
@@ -241,51 +235,6 @@ def test_a_started_buzz_feeds_the_device_from_the_bee():
     assert device.stopped and buzz.started is False
 
 
-def test_the_bee_is_silent_unless_asked_for(monkeypatch):
-    monkeypatch.delenv(BUZZ_VARIABLE, raising=False)
-    assert buzz_volume(None) == 0.0
-    assert buzz_volume(1.0) == 1.0
-    assert buzz_volume(0.4) == 0.4
-    # Zero is the same silence as never asking, which is the point of having
-    # one number rather than a switch and a volume that can disagree.
-    assert buzz_volume(0.0) == 0.0
-
-
-def test_the_environment_sets_the_volume_for_every_window(monkeypatch):
-    monkeypatch.setenv(BUZZ_VARIABLE, "1")
-    assert buzz_volume(None) == 1.0
-    monkeypatch.setenv(BUZZ_VARIABLE, " 0.4 ")
-    assert buzz_volume(None) == 0.4
-    monkeypatch.setenv(BUZZ_VARIABLE, "0")
-    assert buzz_volume(None) == 0.0
-    # An explicit flag still wins over the configured default.
-    monkeypatch.setenv(BUZZ_VARIABLE, "1")
-    assert buzz_volume(0.0) == 0.0
-
-
-@pytest.mark.parametrize("value", ["loud", "", "   "])
-def test_an_unreadable_environment_value_stays_silent(monkeypatch, capsys, value):
-    monkeypatch.setenv(BUZZ_VARIABLE, value)
-    assert buzz_volume(None) == 0.0
-    if value.strip():
-        assert BUZZ_VARIABLE in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("value", [-0.5, 1.5, math.inf, math.nan])
-def test_a_volume_outside_the_range_stays_silent(monkeypatch, capsys, value):
-    monkeypatch.delenv(BUZZ_VARIABLE, raising=False)
-    assert buzz_volume(value) == 0.0
-    assert "0 to 1" in capsys.readouterr().err
-
-
-def test_the_flag_defaults_to_a_silent_bee():
-    assert build_parser().parse_args([]).buzz is None
-    # A bare --buzz is the full (already faint) volume; a value overrides it.
-    assert build_parser().parse_args(["--buzz"]).buzz == BUZZ_DEFAULT
-    assert build_parser().parse_args(["--buzz", "0.4"]).buzz == 0.4
-    assert build_parser().parse_args(["--buzz", "0"]).buzz == 0.0
-
-
 _CHILD = """
 import fcntl, os, select, struct, termios, time, tty
 tty.setraw(0)
@@ -298,7 +247,7 @@ while time.monotonic() < deadline:
 _RUNNER = f"""
 import sys
 from flower_cursor.observer import main
-argv = ['--render', '--buzz', '--bee-every', '0.05', '--', sys.executable, '-c', {_CHILD!r}]
+argv = ['--buzz', '1', '--bee', '0.05', '--', sys.executable, '-c', {_CHILD!r}]
 raise SystemExit(main(argv))
 """
 # A stand-in for the optional extra: the real `_open_miniaudio` asks for these

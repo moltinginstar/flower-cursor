@@ -19,8 +19,8 @@ from .bee import NoBee
 from .layered import LayeredRuntime
 from .lifecycle import CursorCell
 from .runtime import FlowerVisual
+from .settings import DEFAULT_UNIQUE_FLOWERS as DEFAULT_INDEPENDENT_LIMIT
 
-DEFAULT_INDEPENDENT_LIMIT = 12
 # Building a runtime parses the manifest, so a burst of new cursors is spread
 # over a few ticks rather than stalling one of them.
 _BUILDS_PER_TICK = 2

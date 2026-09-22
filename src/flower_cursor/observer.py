@@ -9,7 +9,6 @@ import struct
 import sys
 import termios
 import time
-from pathlib import Path
 
 from .cursor_visibility import NativeCursorPolicy
 from .cwd_follower import CwdFollower
@@ -19,133 +18,97 @@ from .graphics_renderer import FlowerRenderer
 from .kitty_shell import exec_fallback, shell_command, user_shell
 from .lifecycle import CursorCell
 from .multi_cursor import MultiCursorReplyFilter, MultiCursorTracker
-from .multi_runtime import DEFAULT_INDEPENDENT_LIMIT, MultiCursorFlowers
+from .multi_runtime import MultiCursorFlowers
 from .output_arbiter import OutputArbiter
 from .pty_runner import run
 from .settings import (
-    BEE_INTERVAL_DEFAULT,
-    BEE_INTERVAL_VARIABLE,
-    BEE_VARIABLE,
-    BUZZ_DEFAULT,
-    BUZZ_VARIABLE,
     DEFAULT_MANIFEST,
     DEFAULT_SPECIES,
     FLOWER_CATALOGUE,
     FLOWER_DESCRIPTIONS,
     FLOWER_MANIFESTS,
-    SPECIES_VARIABLE,
+    OFF,
+    SETTINGS,
     FlowerSpec,
-    bee_enabled,
-    bee_interval,
-    buzz_volume,
+    Settings,
     flower_help,
-    selected_species,
+    kitty_shell_requested,
+    resolve,
 )
 
-# Everything a window is allowed to ask for lives in `settings`; these names are
-# re-exported because `--flower`, the docs and the tests all learned them here.
+# Everything a window is allowed to ask for lives in `settings`; these names
+# are re-exported because the docs and the tests all learned them here.
 __all__ = [
-    "BEE_INTERVAL_DEFAULT",
-    "BEE_INTERVAL_VARIABLE",
-    "BEE_VARIABLE",
-    "BUZZ_DEFAULT",
-    "BUZZ_VARIABLE",
     "DEFAULT_MANIFEST",
     "DEFAULT_SPECIES",
     "FLOWER_CATALOGUE",
     "FLOWER_DESCRIPTIONS",
     "FLOWER_MANIFESTS",
-    "SPECIES_VARIABLE",
+    "OFF",
+    "SETTINGS",
     "FlowerSpec",
-    "bee_enabled",
-    "bee_interval",
-    "buzz_volume",
+    "Settings",
+    "flower_help",
+    "kitty_shell_requested",
     "main",
-    "selected_species",
+    "resolve",
     "shell_main",
 ]
 
 
+def _version() -> str:
+    """What this copy calls itself, however it was installed."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("flower-cursor")
+    except PackageNotFoundError:
+        return "unknown (running from a source tree)"
+
+
 def build_parser() -> argparse.ArgumentParser:
+    """The flags, every one of them generated from its `Setting`.
+
+    Nothing here decides what a setting means or what it defaults to: a flag
+    and its variable are one setting read in two places, and generating the
+    flag from the same declaration the variable is read from is what keeps
+    them saying the same thing.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--log", type=Path, help="write changed cursor cells to this file")
-    parser.add_argument(
-        "--render",
-        action="store_true",
-        help="render authored flower poses around the observed cursor",
-    )
-    parser.add_argument(
-        "--interval",
-        type=float,
-        default=1 / 30,
-        help="seconds between Kitty cursor-position queries",
-    )
-    parser.add_argument(
-        "--render-interval",
-        type=float,
-        default=1 / 60,
-        help="seconds between independent animation/render ticks",
-    )
-    selection = parser.add_mutually_exclusive_group()
-    selection.add_argument(
-        "--flower",
-        choices=tuple(FLOWER_MANIFESTS),
-        help=f"select a bundled flower species (default: {DEFAULT_SPECIES}; {flower_help()})",
-    )
-    selection.add_argument(
-        "--shedding-manifest", type=Path, help="override the bundled layered flower assets"
-    )
-    parser.add_argument(
-        "--independent-cursors",
-        type=int,
-        default=DEFAULT_INDEPENDENT_LIMIT,
-        help="how many declared cursors get their own flower before copies are used",
-    )
-    parser.add_argument(
-        "--kitty-shell",
-        action="store_true",
-        help="start the user's login shell with Kitty's shell integration nested inside",
-    )
-    parser.add_argument(
-        "--buzz",
-        nargs="?",
-        type=float,
-        const=BUZZ_DEFAULT,
-        default=None,
-        metavar="VOLUME",
-        help=(
-            "wingbeat audio while the bee is in flight, 0 to 1, where a bare --buzz means "
-            f"{BUZZ_DEFAULT:g} and 0 is silence (default: off; {BUZZ_VARIABLE}=0.4 sets it "
-            "for every window; needs the optional sound extra)"
+    groups = {
+        False: parser,
+        True: parser.add_argument_group(
+            "development",
+            "Knobs for working on the cursor itself, or for trading animation "
+            "smoothness against the CPU it costs.",
         ),
-    )
-    parser.add_argument(
-        "--bee-every",
-        type=float,
-        default=None,
-        metavar="SECONDS",
-        help=(
-            "how long the caret stays still before a bee visits, on average; the wait is "
-            "randomised around it and starts over whenever the caret moves or the bee leaves "
-            f"(default: {BEE_INTERVAL_DEFAULT:g}; 0 means as soon as the caret stops; "
-            f"{BEE_INTERVAL_VARIABLE}=180 sets it for every window)"
-        ),
-    )
-    parser.add_argument(
-        "--no-bee",
-        action="store_true",
-        help=(
-            "grow the flower without its visitor "
-            f"({BEE_VARIABLE}=off does the same for every window)"
-        ),
-    )
+    }
+    for setting in SETTINGS:
+        groups[setting.development].add_argument(
+            setting.flag,
+            dest=setting.attribute,
+            default=None,
+            metavar=setting.metavar,
+            help=setting.help,
+        )
     parser.add_argument(
         "--check",
         action="store_true",
         help="report whether this machine is set up to grow flowers, then exit",
     )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"flower-cursor {_version()}",
+        help="print the version, then exit",
+    )
     parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
+
+
+def _given(args: argparse.Namespace) -> dict[str, str | None]:
+    """The settings named on the command line, by the name they share."""
+    return {setting.name: getattr(args, setting.attribute) for setting in SETTINGS}
 
 
 def _resolve_command(args: argparse.Namespace) -> list[str]:
@@ -155,22 +118,13 @@ def _resolve_command(args: argparse.Namespace) -> list[str]:
         command = command[1:]
     if command:
         return command
-    return shell_command() if args.kitty_shell else [user_shell()]
+    # Started by Kitty as its `shell`, the shell we start has to be given the
+    # integration Kitty would have set up itself; started by hand, it is
+    # already inside an integrated shell and nesting a second one is noise.
+    return shell_command() if kitty_shell_requested() else [user_shell()]
 
 
-def _chosen_manifest(args: argparse.Namespace) -> tuple[Path | None, str | None]:
-    """The assets this window grows, and the species name that picked them."""
-    species = selected_species(args.flower, overridden=args.shedding_manifest is not None)
-    selected = species or (DEFAULT_SPECIES if args.render else None)
-    manifest = args.shedding_manifest or (
-        FLOWER_MANIFESTS[selected] if selected is not None else None
-    )
-    return manifest, species
-
-
-def _grow(
-    manifest: Path, species: str | None, args: argparse.Namespace, command: list[str]
-) -> tuple[object, object, MultiCursorFlowers]:
+def _grow(settings: Settings, command: list[str]) -> tuple[object, object, MultiCursorFlowers]:
     """Everything that draws, or the user's shell if none of it can be built.
 
     Configured as Kitty's `shell`, this wrapper is the only thing between the
@@ -180,19 +134,21 @@ def _grow(
     try:
         from .layered import LayeredCompositor, LayeredRuntime
 
-        chosen = {"species": species} if species is not None else {}
+        manifest = settings.manifest
+        named = settings.species_name
+        chosen = {"species": named} if named is not None else {}
         return (
             LayeredRuntime(
                 manifest,
-                bee=bee_enabled(args.no_bee),
-                bee_interval=bee_interval(args.bee_every),
+                bee=settings.bee is not None,
+                bee_interval=settings.bee if settings.bee is not None else 0.0,
                 **chosen,
             ),
             LayeredCompositor(manifest, **chosen),
-            MultiCursorFlowers(manifest, independent_limit=args.independent_cursors),
+            MultiCursorFlowers(manifest, independent_limit=settings.unique_flowers),
         )
     except Exception:
-        if args.kitty_shell:
+        if kitty_shell_requested():
             exec_fallback(list(command))
         raise
 
@@ -227,7 +183,7 @@ class _Window:
 
     def __init__(
         self,
-        args: argparse.Namespace,
+        settings: Settings,
         *,
         runtime,
         compositor,
@@ -268,8 +224,8 @@ class _Window:
             else None
         )
         self.focus_filter = FocusFilter() if self.renderer is not None else None
-        self._interval = args.interval
-        self._tick_interval = args.render_interval
+        self._interval = settings.poll_interval
+        self._tick_interval = settings.render_interval
 
     def write_output(self, data: bytes) -> None:
         self.output.write(data)
@@ -435,38 +391,37 @@ class _Window:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    given = _given(args)
     if args.check:
         # Answered before anything opens a PTY or draws: the point of asking is
         # that something is wrong, and a report that needs a working install to
-        # print is no use to the person whose install is broken.
+        # print is no use to the person whose install is broken. It is given
+        # the same settings a window would run with, so what it describes is
+        # this invocation rather than an idealised one.
         from .check import run_check
 
-        return run_check()
+        return run_check(resolve(given))
+    settings = resolve(given)
     command = _resolve_command(args)
-    manifest, species = _chosen_manifest(args)
-    runtime = compositor = flowers = None
-    if manifest is not None:
-        runtime, compositor, flowers = _grow(manifest, species, args, command)
-    # Read even when nothing will be drawn, so an unreadable setting is still
-    # worth the line on stderr that says so.
-    volume = buzz_volume(args.buzz)
-    if volume > 0 and not bee_enabled(args.no_bee):
+    runtime, compositor, flowers = _grow(settings, command)
+    volume = settings.buzz
+    if volume > 0 and settings.bee is None:
         # The buzz is the bee's; there is nothing here to make the sound.
         print("flower-cursor: no bee to buzz, staying silent", file=sys.stderr)
         volume = 0.0
     window = _Window(
-        args,
+        settings,
         runtime=runtime,
         compositor=compositor,
         flowers=flowers,
-        buzz=_open_buzz(volume) if runtime is not None else None,
-        log_file=args.log.open("w") if args.log is not None else None,
+        buzz=_open_buzz(volume),
+        log_file=settings.log.open("w") if settings.log is not None else None,
     )
     return window.run(command)
 
 
 def shell_main() -> int:
-    return main(["--render", *sys.argv[1:]])
+    return main(sys.argv[1:])
 
 
 if __name__ == "__main__":

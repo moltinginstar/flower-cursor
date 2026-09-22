@@ -249,16 +249,16 @@ from pathlib import Path
 from flower_cursor.geometry import FlowerLayout
 from flower_cursor.layered import LayeredCompositor, LayeredRuntime
 from flower_cursor.lifecycle import CursorCell
-from flower_cursor.observer import FLOWER_MANIFESTS, build_parser
+from flower_cursor.settings import resolve
 import flower_cursor
 
 checkout = Path(os.environ["FLOWER_CURSOR_CHECKOUT"]).resolve()
 assert not Path(flower_cursor.__file__).resolve().is_relative_to(checkout)
-args = build_parser().parse_args(["--flower", "cornflower"])
-manifest = FLOWER_MANIFESTS[args.flower]
+settings = resolve({"species": "cornflower"}, {})
+manifest = settings.manifest
 assert not manifest.resolve().is_relative_to(checkout)
-runtime = LayeredRuntime(manifest, species=args.flower, bee_rng=random.Random(4))
-compositor = LayeredCompositor(manifest, species=args.flower)
+runtime = LayeredRuntime(manifest, species=settings.species_name, bee_rng=random.Random(4))
+compositor = LayeredCompositor(manifest, species=settings.species_name)
 runtime.move_to(CursorCell(4, 8))
 runtime.update(1.2)
 visual = runtime.visuals()[0]

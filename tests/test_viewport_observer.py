@@ -28,7 +28,7 @@ while time.monotonic() < deadline:
 _RUNNER = f"""
 import sys
 from flower_cursor.observer import main
-raise SystemExit(main(['--render', '--bee-every', '0.05', '--', sys.executable, '-c', {_CHILD!r}]))
+raise SystemExit(main(['--bee', '0.05', '--', sys.executable, '-c', {_CHILD!r}]))
 """
 
 

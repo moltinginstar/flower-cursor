@@ -37,7 +37,7 @@ pause(1.5)
 _RUNNER = f"""
 import sys
 from flower_cursor.observer import main
-raise SystemExit(main(['--render', '--no-bee', '--', sys.executable, '-c', {_CHILD!r}]))
+raise SystemExit(main(['--bee', 'off', '--', sys.executable, '-c', {_CHILD!r}]))
 """
 
 
