@@ -187,11 +187,14 @@ class FlowerRenderer:
                         drawn[visual.appearance] = memo
                 frame, pixels = memo
                 left, top = self.layout.origin(visual.cell, self._cell_size)
-                appearance = visual.appearance if left >= 0 else None
-                if left < 0:
-                    frame = frame.crop((-left, 0, width, height))
+                # Kitty places from a cell, so whatever lies past the top or left
+                # edge is cut off here rather than moving the flower to fit.
+                clipped = left < 0 or top < 0
+                appearance = None if clipped else visual.appearance
+                if clipped:
+                    frame = frame.crop((max(0, -left), max(0, -top), width, height))
                     pixels = frame.tobytes()
-                    left = 0
+                    left, top = max(0, left), max(0, top)
             column, x_offset = divmod(left, cell_width)
             row, y_offset = divmod(top, cell_height)
             target = CursorCell(row, column)

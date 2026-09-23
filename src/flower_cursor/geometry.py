@@ -51,7 +51,7 @@ class FlowerLayout:
         offset = round(self.anchor_columns * cw - self.root_anchor[0] * width)
         return (
             (cell.column - self.anchor_columns) * cw + offset,
-            max(0, cell.row - self.anchor_rows) * ch + min(2, ch - 1),
+            (cell.row - self.anchor_rows) * ch + min(2, ch - 1),
         )
 
     def point(

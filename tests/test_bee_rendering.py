@@ -164,7 +164,7 @@ def scene():
 
 @pytest.mark.parametrize("cell", [A, CursorCell(0, 0), CursorCell(0, 50)])
 @pytest.mark.parametrize("custom", [False, True])
-def test_real_rest_tracks_rendered_head_with_top_clamp_left_crop_and_custom_layout(cell, custom):
+def test_real_rest_tracks_rendered_head_with_top_crop_left_crop_and_custom_layout(cell, custom):
     runtime = LayeredRuntime(DEFAULT_MANIFEST, bee_rng=random.Random(31))
     compositor = LayeredCompositor(DEFAULT_MANIFEST)
     options = dict(columns=7, rows=3, anchor_columns=2, anchor_rows=2) if custom else {}
@@ -190,7 +190,7 @@ def test_real_rest_tracks_rendered_head_with_top_clamp_left_crop_and_custom_layo
         anchors = (2, 2) if custom else (3, 1)
         left = (cell.column - anchors[0]) * 16
         left += round(anchors[0] * 16 - runtime.pose_library.root_anchor[0] * width)
-        top = max(0, cell.row - anchors[1]) * 33 + 2
+        top = (cell.row - anchors[1]) * 33 + 2
         head = (left + local[0] * width, top + local[1] * height)
         assert runtime.bee.head == pytest.approx(head)
         feet = tuple(
@@ -433,19 +433,20 @@ def test_real_flower_pixels_and_placement_unchanged_by_shared_geometry(cell, cus
     anchors = (2, 2) if custom else (3, 1)
     left = (cell.column - anchors[0]) * 16
     left += round(anchors[0] * 16 - runtime.pose_library.root_anchor[0] * width)
+    top = (cell.row - anchors[1]) * 33 + 2
     expected = (
         compositor.frame(visual)
         .convert("RGBa")
         .resize((width, height), Image.Resampling.LANCZOS)
         .convert("RGBA")
     )
-    if left < 0:
-        expected = expected.crop((-left, 0, width, height))
+    if left < 0 or top < 0:
+        expected = expected.crop((max(0, -left), max(0, -top), width, height))
     renderer.render((visual,), cell, viewport=VIEWPORT)
     _, image, origin = transmission(b"".join(writes))
     assert image.size == expected.size
     assert image.tobytes() == expected.tobytes()
-    assert origin == (max(0, left), max(0, cell.row - anchors[1]) * 33 + 2)
+    assert origin == (max(0, left), max(0, top))
 
 
 def test_primary_only_bee_survives_independent_copies_transitions_with_unique_ids(scene):
@@ -558,7 +559,8 @@ def test_recycled_lower_bee_image_id_stays_above_real_flowers(secondary_count, z
 
 
 @pytest.mark.parametrize("viewport", [VIEWPORT, ViewportGeometry(30, 100, 800, 480)])
-@pytest.mark.parametrize("cell", [A, CursorCell(0, 50)])
+# Row 1 is the highest a full bloom fits; on row 0 the bee lands above the viewport.
+@pytest.mark.parametrize("cell", [A, CursorCell(1, 50)])
 @pytest.mark.parametrize("seed", [0, 1, 3, 8, 12, 13, 31])
 def test_exported_near_feet_contact_visible_bloom_at_actual_render_scale(viewport, cell, seed):
     runtime = LayeredRuntime(DEFAULT_MANIFEST, bee_rng=random.Random(seed))

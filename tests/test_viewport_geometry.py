@@ -46,7 +46,7 @@ def test_shared_flower_transform_preserves_original_renderer_formula(cell, cell_
     height = (layout.rows * ch - min(2, ch - 1)) * layout.canvas_scale
     left = (cell.column - layout.anchor_columns) * cw
     left += round(layout.anchor_columns * cw - layout.root_anchor[0] * width)
-    top = max(0, cell.row - layout.anchor_rows) * ch + min(2, ch - 1)
+    top = (cell.row - layout.anchor_rows) * ch + min(2, ch - 1)
     assert layout.size(cell_size) == (width, height)
     assert layout.origin(cell, cell_size) == (left, top)
     assert layout.point(cell, cell_size, (0.31, 0.27)) == pytest.approx(
@@ -56,14 +56,16 @@ def test_shared_flower_transform_preserves_original_renderer_formula(cell, cell_
     assert abs(root[0] - cell.column * cw) <= 0.5
 
 
-def test_top_row_is_clamped_not_cropped_and_left_crop_keeps_head_registration():
+def test_top_row_keeps_root_registration_and_leaves_the_overflow_above_the_viewport():
     layout = FlowerLayout((0.5, 0.45))
-    cell = CursorCell(0, 0)
     assert layout.size((16, 33)) == (144, 128)
-    assert layout.origin(cell, (16, 33)) == (-72, 2)
-    assert layout.point(cell, (16, 33), (0.75, 0.25)) == (36, 34)
-    cropped_head = (0.75 * 144 - 72, 0.25 * 128)
-    assert (cropped_head[0], cropped_head[1] + 2) == (36, 34)
+    assert layout.origin(CursorCell(0, 0), (16, 33)) == (-72, -31)
+    # The head is placed where it would be on any other row, above the viewport.
+    assert layout.point(CursorCell(0, 0), (16, 33), (0.75, 0.25)) == (36, 1)
+    assert layout.point(CursorCell(0, 0), (16, 33), (0.75, 0.1)) == (36, -18.2)
+    for row in (0, 1, 5):
+        root = layout.point(CursorCell(row, 0), (16, 33), layout.root_anchor)
+        assert root[1] - row * 33 == pytest.approx(26.6)
 
 
 @pytest.mark.parametrize(
