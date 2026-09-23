@@ -18,7 +18,7 @@ from collections.abc import Callable, Sequence
 
 from .cursor_report import CursorReportParser
 from .cursor_visibility import CURSOR_HIDE, CURSOR_SHOW
-from .focus import FOCUS_DISABLE, FOCUS_ENABLE, FocusFilter
+from .focus import FOCUS_DISABLE, FOCUS_ENABLE, FocusFilter, is_typing
 from .lifecycle import CursorCell
 from .output_arbiter import OutputArbiter
 from .vt_framer import (
@@ -145,6 +145,17 @@ def run(
         nonlocal resize_pending
         resize_pending = True
 
+    def focus_moved(focused: bool) -> None:
+        nonlocal next_query, next_tick, last_tick
+        if focused:
+            # Time did not pass for the animation while it was not being drawn;
+            # resume from now instead of replaying the gap in one step.
+            now = time.monotonic()
+            last_tick = next_tick = now
+            next_query = now
+        if on_focus is not None:
+            on_focus(focused)
+
     def on_child_sequence(event: Event) -> None:
         # The child can ask for a DECXCPR report too; its reply is marked the
         # same way ours is, so claim only as many replies as we asked for.
@@ -199,6 +210,8 @@ def run(
                     deadlines.append(next_tick)
                 if focus_hold is not None:
                     deadlines.append(focus_hold)
+                if focus_filter is not None and focus_filter.deadline is not None:
+                    deadlines.append(focus_filter.deadline)
             else:
                 recovery_deadline = output_arbiter.recovery_deadline
                 deadlines = [recovery_deadline] if recovery_deadline is not None else []
@@ -216,21 +229,17 @@ def run(
                     if focus_filter is not None:
                         data, focus_changed = focus_filter.feed(data)
                         if focus_changed:
-                            if focus_filter.focused:
-                                # Time did not pass for the animation while it
-                                # was not being drawn; resume from now instead
-                                # of replaying the gap in one step.
-                                now = time.monotonic()
-                                last_tick = next_tick = now
-                                next_query = now
-                            if on_focus is not None:
-                                on_focus(focus_filter.focused)
+                            focus_moved(focus_filter.focused)
                         focus_hold = (
                             time.monotonic() + _FOCUS_HOLD if focus_filter.has_pending else None
                         )
                         if not data:
                             continue
                     passthrough, reports = parser.feed(data)
+                    # Kitty sends keys only to the focused window, so typing
+                    # answers what its focus reports have not yet said.
+                    if focus_filter is not None and is_typing(passthrough) and focus_filter.typed():
+                        focus_moved(True)
                     report_hold = time.monotonic() + _FOCUS_HOLD if parser.has_pending else None
                     if stdin_filter is not None:
                         passthrough = stdin_filter(passthrough)
@@ -282,6 +291,8 @@ def run(
                     focus_hold = None
                     if held:
                         _write_all(master_fd, held)
+                if focus_filter.expire(now):
+                    focus_moved(False)
             while pending_reassert and output_arbiter.can_write:
                 output_arbiter.write(pending_reassert.popleft())
             focused = focus_filter is None or focus_filter.focused

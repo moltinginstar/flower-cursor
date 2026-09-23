@@ -461,3 +461,85 @@ raise SystemExit(run(
     # A caret that is not drawn is not worth asking about, so the polling stops
     # at once rather than lasting as long as the animation does.
     assert queries_seen - queries_at_focus_out <= 3, (queries_seen, queries_at_focus_out)
+
+
+def _run_with_grace(keys: list[tuple[float, bytes]]) -> tuple[bytes, int, int]:
+    """Run a window with a short focus grace, typing *keys* at their times.
+
+    Returns what it said on stderr, how many cursor queries it made, and how
+    many of them came after it gave up its focus.
+    """
+    child_code = "import time; time.sleep(1.2)"
+    runner_code = f"""
+import sys
+from flower_cursor.focus import FocusFilter
+from flower_cursor.pty_runner import run
+
+def on_focus(focused):
+    print('FOCUS', focused, file=sys.stderr, flush=True)
+
+raise SystemExit(run(
+    [sys.executable, '-c', {child_code!r}],
+    focus_filter=FocusFilter(grace=0.4),
+    on_focus=on_focus,
+    query_interval=0.02,
+))
+"""
+    master_fd, slave_fd = pty.openpty()
+    process = subprocess.Popen(
+        [sys.executable, "-c", runner_code],
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=subprocess.PIPE,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+    os.set_blocking(master_fd, False)
+    output = bytearray()
+    queries_seen = 0
+    started = time.monotonic()
+    pending = sorted(keys)
+    try:
+        while time.monotonic() - started < 5:
+            readable, _, _ = select.select([master_fd], [], [], 0.01)
+            if readable:
+                try:
+                    data = os.read(master_fd, 65536)
+                except OSError:
+                    break
+                if not data:
+                    break
+                output.extend(data)
+                queries = output.count(_OUR_QUERY)
+                # Kitty answers every query, focused or not; the answers are
+                # not typing.
+                for _ in range(queries - queries_seen):
+                    os.write(master_fd, b"\x1b[?1;1R")
+                queries_seen = queries
+            while pending and time.monotonic() - started >= pending[0][0]:
+                os.write(master_fd, pending.pop(0)[1])
+            if process.poll() is not None:
+                break
+        process.wait(timeout=5)
+        stderr = process.stderr.read() if process.stderr is not None else b""
+    finally:
+        os.close(master_fd)
+    return stderr, queries_seen, output.count(_OUR_QUERY)
+
+
+def test_a_window_nothing_confirms_stops_drawing_after_the_grace() -> None:
+    stderr, queries, _ = _run_with_grace([])
+    assert stderr.splitlines() == [b"FOCUS False"], stderr
+    # 0.4 s of polling at 50 Hz, then none for the rest of the second.
+    assert queries <= 30, queries
+
+
+def test_typing_during_the_grace_keeps_the_window_drawing() -> None:
+    stderr, queries, _ = _run_with_grace([(0.1, b"x")])
+    assert b"FOCUS" not in stderr, stderr
+    assert queries > 30, queries
+
+
+def test_typing_after_the_grace_brings_the_window_back() -> None:
+    stderr, _, _ = _run_with_grace([(0.7, b"x")])
+    assert stderr.splitlines() == [b"FOCUS False", b"FOCUS True"], stderr

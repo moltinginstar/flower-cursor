@@ -8,15 +8,19 @@ making: louder as it closes on the bloom, pitch rising with airspeed, and
 silent while it sits there with its wings tucked.
 
 Sound is off unless asked for, and the audio backend is an optional extra, so
-everything here has to be missing-able. `BeeBuzz.start` returns whether it got
-a device; every other method is a no-op when it did not. Nothing in this module
+everything here has to be missing-able. `BeeBuzz.start` returns whether the
+backend is there; every other method is a no-op when it is not, or when the
+device it opens later refuses. Nothing in this module
 writes to stdout - that file descriptor is the terminal transport.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import math
+import queue
 import random
+import threading
 import time
 from array import array
 from collections.abc import Callable, Generator
@@ -303,12 +307,27 @@ def _open_miniaudio(sample_rate: int) -> Device:
     )
 
 
+def _have_miniaudio() -> bool:
+    """Whether the optional backend is installed, without paying to import it."""
+    return importlib.util.find_spec("miniaudio") is not None
+
+
 class BeeBuzz:
     """Drive `Voice` from a bee, out of whatever device the backend gives us.
 
     A missing extra, a machine with no sound card, and a backend that refuses
-    to open all land in the same place: one line on stderr, `started` stays
-    False, and the flower cursor carries on exactly as it does without sound.
+    to open all land in the same place: one line of report, and the flower
+    cursor carries on exactly as it does without sound.
+
+    The device runs only while there is something to hear. A running device
+    asks for samples whether or not they are silent, and synthesizing them is
+    most of what the buzz costs, so it is stopped each time the voice falls
+    silent - a bee resting on the bloom, one that has left, a window that lost
+    focus - and started again when the bee is next audible. It is not opened
+    at all until then: importing the backend and opening a device cost a window
+    ~20 MB and ~0.1 s, which a window no bee ever buzzes in should not pay, and
+    that tenth of a second is spent on a worker thread so the flower does not
+    stutter as the bee arrives.
     """
 
     def __init__(
@@ -317,41 +336,88 @@ class BeeBuzz:
         volume: float = 1.0,
         sample_rate: int = SAMPLE_RATE,
         open_device: Callable[[int], Device] = _open_miniaudio,
+        backend_installed: Callable[[], bool] = _have_miniaudio,
         report: Callable[[str], None] | None = None,
     ) -> None:
         self.voice = Voice(sample_rate=sample_rate, volume=volume)
         self._open_device = open_device
+        self._backend_installed = backend_installed
         self._report = report
-        self._device: Device | None = None
-        self._stream: Generator[bytes, int] | None = None
         self.started = False
+        # Whether the device should be running, as last asked of the worker.
+        self.playing = False
+        self._requests: queue.SimpleQueue[bool | None] = queue.SimpleQueue()
+        self._worker: threading.Thread | None = None
+        # A failure on the worker, held until the owning thread can say it.
+        self._failure: str | None = None
 
     def _say(self, message: str) -> None:
         if self._report is not None:
             self._report(message)
 
     def start(self) -> bool:
-        """Open the device. False means the bee is silent and nothing broke."""
+        """Get ready to buzz. False means the bee is silent and nothing broke.
+
+        Only the backend's presence is checked here; the device itself opens
+        the first time the bee is audible.
+        """
         if self.started:
             return True
-        try:
-            device = self._open_device(self.voice.sample_rate)
-        except ImportError:
+        if not self._backend_installed():
             self._say(MISSING_BACKEND)
             return False
-        except Exception as error:  # no card, no server, no permission
-            self._say(f"flower-cursor: no audio device for the bee ({error}); it stays silent")
-            return False
+        self._worker = threading.Thread(target=self._run, name="bee-buzz", daemon=True)
+        self._worker.start()
+        self.started = True
+        return True
+
+    def _run(self) -> None:
+        """Own the device: open it when first wanted, start and stop it after."""
+        device: Device | None = None
         stream = self._samples()
         next(stream)
-        try:
-            device.start(stream)
-        except Exception as error:
-            self._say(f"flower-cursor: could not start bee audio ({error}); it stays silent")
+        running = False
+        while (wanted := self._requests.get()) is not None:
+            if wanted == running:
+                continue
+            if device is None:
+                try:
+                    device = self._open_device(self.voice.sample_rate)
+                except ImportError:
+                    self._fail(MISSING_BACKEND)
+                    return
+                except Exception as error:  # no card, no server, no permission
+                    self._fail(
+                        f"flower-cursor: no audio device for the bee ({error}); it stays silent"
+                    )
+                    return
+            try:
+                if wanted:
+                    device.start(stream)
+                else:
+                    device.stop()
+            except Exception as error:
+                self._fail(f"flower-cursor: could not play bee audio ({error}); it stays silent")
+                self._shutdown(device)
+                return
+            running = wanted
+        if device is not None:
             self._shutdown(device)
-            return False
-        self._device, self._stream, self.started = device, stream, True
-        return True
+
+    def _fail(self, message: str) -> None:
+        self._failure = message
+        self.started = False
+
+    def _say_failure(self) -> None:
+        if self._failure is not None:
+            message, self._failure = self._failure, None
+            self.playing = False
+            self._say(message)
+
+    def _request(self, playing: bool) -> None:
+        if playing != self.playing:
+            self.playing = playing
+            self._requests.put(playing)
 
     def _samples(self) -> Generator[bytes, int]:
         frames = yield b""
@@ -360,9 +426,14 @@ class BeeBuzz:
 
     def update(self, bee, *, audible: bool = True) -> None:
         """Point the voice at the bee's current state; cheap enough per tick."""
+        self._say_failure()
         if not self.started:
             return
         self.voice.target = buzz_state(bee, audible=audible)
+        if self.voice.target.gain > 0:
+            self._request(True)
+        elif self.voice.silent():
+            self._request(False)
 
     def mute(self) -> None:
         if self.started:
@@ -370,18 +441,22 @@ class BeeBuzz:
 
     def close(self) -> None:
         """Fade out, then let the device go. Called on the way out of a window."""
-        if not self.started:
-            return
-        self.mute()
-        deadline = time.monotonic() + _FADE_OUT
-        while not self.voice.silent() and time.monotonic() < deadline:
-            time.sleep(0.005)
-        self._shutdown(self._device)
-        self._device = self._stream = None
-        self.started = False
+        if self.started:
+            self.mute()
+            if self.playing:
+                deadline = time.monotonic() + _FADE_OUT
+                while not self.voice.silent() and time.monotonic() < deadline:
+                    time.sleep(0.005)
+        if self._worker is not None:
+            self._requests.put(None)
+            self._worker.join(timeout=1.0)
+            self._worker = None
+        # Whatever went wrong on the worker is said once it can no longer race us.
+        self._say_failure()
+        self.started = self.playing = False
 
     @staticmethod
-    def _shutdown(device: Device | None) -> None:
+    def _shutdown(device: Device) -> None:
         for method in ("stop", "close"):
             try:
                 getattr(device, method)()

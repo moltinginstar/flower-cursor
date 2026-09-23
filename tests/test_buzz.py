@@ -1,6 +1,7 @@
 import array
 import math
 import random
+import threading
 
 import pytest
 
@@ -180,27 +181,43 @@ def test_muting_fades_instead_of_cutting():
 
 
 class FakeDevice:
+    """Records what the worker asks of it, and lets a test wait for each step."""
+
     def __init__(self):
         self.stream = None
-        self.stopped = False
+        self.events = []
+        self.changed = threading.Condition()
+
+    def _record(self, event):
+        with self.changed:
+            self.events.append(event)
+            self.changed.notify_all()
 
     def start(self, stream):
         self.stream = stream
+        self._record("start")
 
     def stop(self):
-        self.stopped = True
+        self._record("stop")
 
     def close(self):
-        self.stopped = True
+        self._record("close")
+
+    def wait_for(self, *events):
+        with self.changed:
+            assert self.changed.wait_for(lambda: self.events == list(events), timeout=2), (
+                self.events
+            )
+
+
+def installed():
+    return True
 
 
 def test_a_missing_extra_says_so_once_and_stays_silent():
     said = []
-
-    def missing(sample_rate):
-        raise ImportError("No module named 'miniaudio'")
-
-    buzz = BeeBuzz(open_device=missing, report=said.append)
+    opened = []
+    buzz = BeeBuzz(open_device=opened.append, backend_installed=lambda: False, report=said.append)
     assert buzz.start() is False
     assert buzz.started is False
     assert said == [MISSING_BACKEND]
@@ -209,6 +226,7 @@ def test_a_missing_extra_says_so_once_and_stays_silent():
     buzz.mute()
     buzz.close()
     assert said == [MISSING_BACKEND]
+    assert opened == []
 
 
 def test_a_machine_with_no_sound_card_is_not_an_error():
@@ -217,22 +235,58 @@ def test_a_machine_with_no_sound_card_is_not_an_error():
     def refused(sample_rate):
         raise OSError("no default output device")
 
-    assert BeeBuzz(open_device=refused, report=said.append).start() is False
-    assert len(said) == 1 and "stays silent" in said[0]
-
-
-def test_a_started_buzz_feeds_the_device_from_the_bee():
-    device = FakeDevice()
-    buzz = BeeBuzz(open_device=lambda rate: device)
+    buzz = BeeBuzz(open_device=refused, backend_installed=installed, report=said.append)
     assert buzz.start() is True
-    assert buzz.start() is True
+    # The device is only asked for once there is something to hear.
     buzz.update(visiting(12.5))
-    assert buzz.voice.target.gain > 0
+    buzz.close()
+    assert len(said) == 1 and "stays silent" in said[0]
+    assert buzz.started is False
+    buzz.update(visiting(12.5))
+    assert len(said) == 1
+
+
+def test_no_device_is_opened_until_the_bee_is_audible():
+    opened = []
+
+    def open_device(rate):
+        opened.append(rate)
+        return FakeDevice()
+
+    buzz = BeeBuzz(open_device=open_device, backend_installed=installed)
+    assert buzz.start() is True
+    buzz.update(visiting(12.5), audible=False)
+    buzz.update(visiting(0.0))
+    assert not buzz.playing
+    buzz.close()
+    assert opened == []
+
+
+def test_the_device_runs_only_while_there_is_something_to_hear():
+    device = FakeDevice()
+    buzz = BeeBuzz(open_device=lambda rate: device, backend_installed=installed)
+    assert buzz.start() is True
+    assert buzz.start() is True
+    bee = visiting(12.5)
+    buzz.update(bee)
+    assert buzz.voice.target.gain > 0 and buzz.playing
+    device.wait_for("start")
     assert len(samples(device.stream.send(512))) == 512
+    # Quiet is asked for, but the voice still has a fade to play.
+    buzz.update(bee, audible=False)
+    assert buzz.voice.target.gain == 0 and buzz.playing
+    device.stream.send(SAMPLE_RATE * 2)
+    buzz.update(bee, audible=False)
+    assert not buzz.playing
+    device.wait_for("start", "stop")
+    # The next visit starts the same device again rather than opening another.
+    buzz.update(bee)
+    device.wait_for("start", "stop", "start")
     buzz.mute()
     assert buzz.voice.target.gain == 0
     buzz.close()
-    assert device.stopped and buzz.started is False
+    device.wait_for("start", "stop", "start", "stop", "close")
+    assert buzz.started is False and not buzz.playing
 
 
 _CHILD = """

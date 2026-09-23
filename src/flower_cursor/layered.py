@@ -206,7 +206,14 @@ class LayeredRuntime:
 
 
 class LayeredCompositor:
-    def __init__(self, manifest: Path, size: int = 256, *, species: str | None = None) -> None:
+    def __init__(
+        self,
+        manifest: Path,
+        size: int = 256,
+        *,
+        species: str | None = None,
+        images: dict[tuple[Path, str], Image.Image] | None = None,
+    ) -> None:
         data = manifest_data(manifest)
         self.metadata = metadata_from_manifest(data, selected_species=species)
         self.library = PoseLibrary.from_manifest(manifest)
@@ -224,7 +231,10 @@ class LayeredCompositor:
             else {}
         )
         self._flights: dict[_FlightKey, _CapturedPetal | None] = {}
-        self._images: dict[tuple[Path, str], Image.Image] = {}
+        # Decoded layers never change once loaded, so compositors drawing the
+        # same flower at the same size can hand each other one dictionary: the
+        # shared renderer keeps one per species rather than one per window.
+        self._images: dict[tuple[Path, str], Image.Image] = {} if images is None else images
         self._bee = BeeCompositor()
 
     @property
