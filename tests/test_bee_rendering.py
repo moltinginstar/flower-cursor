@@ -12,7 +12,7 @@ from PIL import Image
 from flower_cursor.bee import BeePose
 from flower_cursor.bee_art import ASSETS, BeeCompositor
 from flower_cursor.geometry import ViewportGeometry
-from flower_cursor.graphics_renderer import FlowerRenderer
+from flower_cursor.graphics_renderer import DOWNSCALE, FlowerRenderer
 from flower_cursor.layered import BeeVisual, LayeredCompositor, LayeredRuntime
 from flower_cursor.lifecycle import CursorCell
 from flower_cursor.multi_runtime import MultiCursorFlowers
@@ -435,10 +435,7 @@ def test_real_flower_pixels_and_placement_unchanged_by_shared_geometry(cell, cus
     left += round(anchors[0] * 16 - runtime.pose_library.root_anchor[0] * width)
     top = (cell.row - anchors[1]) * 33 + 2
     expected = (
-        compositor.frame(visual)
-        .convert("RGBa")
-        .resize((width, height), Image.Resampling.LANCZOS)
-        .convert("RGBA")
+        compositor.frame(visual).convert("RGBa").resize((width, height), DOWNSCALE).convert("RGBA")
     )
     if left < 0 or top < 0:
         expected = expected.crop((max(0, -left), max(0, -top), width, height))

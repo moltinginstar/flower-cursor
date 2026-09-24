@@ -11,6 +11,7 @@ from PIL import Image, ImageChops
 
 from flower_cursor.bee_art import ASSETS as BEE_ASSETS
 from flower_cursor.geometry import FlowerLayout, ViewportGeometry
+from flower_cursor.graphics_renderer import DOWNSCALE
 from flower_cursor.layered import BeeVisual, LayeredCompositor, LayeredRuntime, LayeredVisual
 from flower_cursor.lifecycle import CursorCell
 from flower_cursor.observer import FLOWER_MANIFESTS
@@ -241,7 +242,7 @@ def bloom_alpha(manifest: Path, data: dict, samples, size: tuple[int, int]) -> I
         for layer in layers:
             with Image.open(manifest.parent / record["layers"][layer]) as image:
                 mask = ImageChops.lighter(mask, image.getchannel("A"))
-    return mask.resize(size, Image.Resampling.LANCZOS)
+    return mask.resize(size, DOWNSCALE)
 
 
 def test_real_variety_bee_feet_touch_each_rendered_bloom(species: str) -> None:
@@ -284,7 +285,7 @@ def test_real_variety_bee_feet_touch_each_rendered_bloom(species: str) -> None:
         flower = (
             compositor.frame(flower_visual_instance)
             .convert("RGBa")
-            .resize((width, height), Image.Resampling.LANCZOS)
+            .resize((width, height), DOWNSCALE)
             .convert("RGBA")
         )
         bloom = bloom_alpha(manifest, data, flower_visual_instance.samples, (width, height))

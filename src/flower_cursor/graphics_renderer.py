@@ -22,6 +22,9 @@ from .runtime import FlowerVisual
 # whose data is still on screen. The span bounds how far the allocator below can
 # reach past the renderer's randomly chosen base.
 _ID_SPAN = 1 << 20
+# The filter that shrinks the supersampled canvas to the cells. BOX costs a
+# third of LANCZOS, and side by side in Kitty I could not tell them apart.
+DOWNSCALE = Image.Resampling.BOX
 
 
 class FlowerRenderer:
@@ -177,11 +180,7 @@ class FlowerRenderer:
                 memo = drawn.get(visual.appearance) if visual.appearance is not None else None
                 if memo is None:
                     frame = self._compositor.frame(visual, duration)
-                    frame = (
-                        frame.convert("RGBa")
-                        .resize((width, height), Image.Resampling.LANCZOS)
-                        .convert("RGBA")
-                    )
+                    frame = frame.convert("RGBa").resize((width, height), DOWNSCALE).convert("RGBA")
                     memo = (frame, frame.tobytes())
                     if visual.appearance is not None:
                         drawn[visual.appearance] = memo

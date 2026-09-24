@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from flower_cursor.graphics_renderer import DOWNSCALE
 from flower_cursor.layered import LayeredCompositor, LayeredRuntime, LayeredVisual
 from flower_cursor.runtime import CursorCell
 
@@ -59,7 +60,7 @@ def scenario(manifest: Path, label: str, output: Path) -> dict:
         x = column * 256
         draw.text((x + 12, 8), f"{label} / {target:.2f}s", fill="white")
         sheet.alpha_composite(image, (x, 30))
-        native = image.convert("RGBa").resize((144, 128), Image.Resampling.LANCZOS).convert("RGBA")
+        native = image.convert("RGBa").resize((144, 128), DOWNSCALE).convert("RGBA")
         sheet.alpha_composite(native, (x + 56, 284))
         image.save(output / f"{label}-{column:02d}.png")
     sheet.convert("RGB").save(output / f"{label}.png")

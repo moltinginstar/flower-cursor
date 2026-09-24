@@ -11,6 +11,7 @@ from PIL import Image
 
 from flower_cursor.bee_art import ASSETS as BEE_ASSETS
 from flower_cursor.geometry import FlowerLayout, ViewportGeometry
+from flower_cursor.graphics_renderer import DOWNSCALE
 from flower_cursor.layered import BeeVisual, LayeredCompositor, LayeredRuntime
 from flower_cursor.lifecycle import CursorCell
 from flower_cursor.observer import FLOWER_MANIFESTS
@@ -185,7 +186,7 @@ def test_real_cornflower_bee_uses_bounded_offset_and_touches_rendered_bloom() ->
         flower = (
             compositor.frame(flower_visual)
             .convert("RGBa")
-            .resize((width, height), Image.Resampling.LANCZOS)
+            .resize((width, height), DOWNSCALE)
             .convert("RGBA")
         )
         bee = compositor.frame(bee_visual)
