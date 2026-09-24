@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 import math
 from bisect import bisect_right
 from dataclasses import dataclass
@@ -87,10 +88,10 @@ class PoseLibrary:
         return self._assets
 
     def select(self, pose: FlowerPose) -> PoseAsset:
-        return self._ranked(pose)[0][1]
+        return self._ranked(pose, 1)[0][1]
 
     def sample(self, pose: FlowerPose) -> tuple[tuple[PoseAsset, float], ...]:
-        neighbors = self._ranked(pose)[:3]
+        neighbors = self._ranked(pose, 3)
         if neighbors[0][0] < 1e-10 or len(neighbors) == 1:
             return ((neighbors[0][1], 1.0),)
         radius = neighbors[-1][0] * 1.001 + 1e-10
@@ -124,7 +125,8 @@ class PoseLibrary:
                 weights[asset] = weights.get(asset, 0.0) + weight * gain
         return tuple(weights.items())
 
-    def _ranked(self, pose: FlowerPose) -> list[tuple[float, PoseAsset]]:
+    def _ranked(self, pose: FlowerPose, limit: int) -> list[tuple[float, PoseAsset]]:
+        """The *limit* nearest assets, nearest first, ties in manifest order."""
         mature_factor = clamp01((pose.bloom - 0.95) / 0.05) * max(
             0.0, min(1.0, (pose.vitality - 0.95) / 0.05)
         )
@@ -138,32 +140,40 @@ class PoseLibrary:
                 pose.stem_bend,
             )
         )
+        # Read once: this runs against every asset several times a frame, and
+        # the pose's collapse, curl and retraction are computed on each read.
+        stem, bloom, vitality, idle_phase = pose.stem, pose.bloom, pose.vitality, pose.idle_phase
+        maturity, leaf_unfurl, petal_open = pose.maturity, pose.leaf_unfurl, pose.petal_open
+        head_lean, stem_bend = pose.head_lean, pose.stem_bend
+        collapse, petal_curl, retraction = pose.collapse, pose.petal_curl, pose.retraction
+        tau, pi = math.tau, math.pi
 
         def score(asset: PoseAsset) -> float:
-            phase_distance = abs(
-                (asset.idle_phase - pose.idle_phase + math.pi) % math.tau - math.pi
-            )
+            phase_distance = abs((asset.idle_phase - idle_phase + pi) % tau - pi)
             score_value = (
-                (asset.stem - pose.stem) ** 2
-                + (asset.bloom - pose.bloom) ** 2
-                + 1.4 * (asset.vitality - pose.vitality) ** 2
+                (asset.stem - stem) ** 2
+                + (asset.bloom - bloom) ** 2
+                + 1.4 * (asset.vitality - vitality) ** 2
                 + mature_factor * 0.08 * phase_distance**2
             )
             if extended_state:
                 score_value += (
-                    0.30 * (asset.stem_length - pose.stem) ** 2
-                    + 1.5 * (asset.maturity - pose.maturity) ** 2
-                    + 0.25 * (asset.leaf_unfurl - pose.leaf_unfurl) ** 2
-                    + 0.75 * (asset.petal_open - pose.petal_open) ** 2
-                    + 0.5 * (asset.head_lean - pose.head_lean) ** 2
-                    + 0.6 * (asset.stem_bend - pose.stem_bend) ** 2
-                    + (asset.collapse - pose.collapse) ** 2
-                    + 0.25 * (asset.petal_curl - pose.petal_curl) ** 2
-                    + 2.0 * (asset.retraction - pose.retraction) ** 2
+                    0.30 * (asset.stem_length - stem) ** 2
+                    + 1.5 * (asset.maturity - maturity) ** 2
+                    + 0.25 * (asset.leaf_unfurl - leaf_unfurl) ** 2
+                    + 0.75 * (asset.petal_open - petal_open) ** 2
+                    + 0.5 * (asset.head_lean - head_lean) ** 2
+                    + 0.6 * (asset.stem_bend - stem_bend) ** 2
+                    + (asset.collapse - collapse) ** 2
+                    + 0.25 * (asset.petal_curl - petal_curl) ** 2
+                    + 2.0 * (asset.retraction - retraction) ** 2
                 )
             return score_value
 
-        return sorted(((score(asset), asset) for asset in self._assets), key=lambda item: item[0])
+        # nsmallest is sorted()[:limit], stable, without sorting every asset.
+        return heapq.nsmallest(
+            limit, ((score(asset), asset) for asset in self._assets), key=lambda item: item[0]
+        )
 
 
 @lru_cache(maxsize=8)

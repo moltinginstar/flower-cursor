@@ -9,12 +9,13 @@ from flower_cursor.bee import DEFAULT_INTERVAL
 from flower_cursor.observer import build_parser
 from flower_cursor.settings import (
     BEE_LIMIT,
+    DEFAULT_FPS,
     DEFAULT_MANIFEST,
     DEFAULT_POLL_INTERVAL,
-    DEFAULT_RENDER_INTERVAL,
     DEFAULT_SPECIES,
     DEFAULT_UNIQUE_FLOWERS,
     FLOWER_MANIFESTS,
+    FPS_LIMIT,
     KITTY_SHELL_VARIABLE,
     SETTINGS,
     TICK_LIMIT,
@@ -29,7 +30,7 @@ DEFAULTS = {
     "unique_flowers": DEFAULT_UNIQUE_FLOWERS,
     "log": None,
     "poll_interval": DEFAULT_POLL_INTERVAL,
-    "render_interval": DEFAULT_RENDER_INTERVAL,
+    "fps": DEFAULT_FPS,
 }
 # Two readable values per setting, and what resolving each should produce.
 # Two, because telling a flag from a variable needs them to disagree.
@@ -40,7 +41,7 @@ SAMPLES = {
     "unique-flowers": (("3", 3), ("0", 0)),
     "log": (("/tmp/cells.log", Path("/tmp/cells.log")), ("/tmp/other.log", Path("/tmp/other.log"))),
     "poll-interval": (("0.5", 0.5), ("0.25", 0.25)),
-    "render-interval": (("0.25", 0.25), ("0.5", 0.5)),
+    "fps": (("30", 30.0), ("24", 24.0)),
 }
 
 
@@ -96,7 +97,10 @@ def test_a_variable_sets_it_and_a_flag_beats_the_variable(name):
         ("unique-flowers", "-1"),
         ("poll-interval", "off"),
         ("poll-interval", "0"),
-        ("render-interval", str(TICK_LIMIT + 1)),
+        ("poll-interval", str(TICK_LIMIT + 1)),
+        ("fps", "0"),
+        ("fps", str(FPS_LIMIT + 1)),
+        ("fps", "off"),
     ],
 )
 def test_an_unreadable_value_costs_a_line_and_keeps_the_default(capsys, name, text):

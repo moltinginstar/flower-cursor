@@ -204,7 +204,7 @@ class _Window:
         )
         self.focus_filter = FocusFilter()
         self._interval = settings.poll_interval
-        self._tick_interval = settings.render_interval
+        self._tick_interval = 1 / settings.fps
 
     def report(self, message: str) -> None:
         """Say something is wrong without drawing it over the child's screen.

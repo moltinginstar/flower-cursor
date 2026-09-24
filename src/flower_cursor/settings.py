@@ -64,13 +64,15 @@ FLOWER_MANIFESTS = {flower.name: flower.manifest for flower in FLOWER_CATALOGUE}
 FLOWER_DESCRIPTIONS = {flower.name: flower.description for flower in FLOWER_CATALOGUE}
 
 # A day is far longer than any window stays still; past that, a bee interval is
-# a typo rather than a preference. The tick limits are the same idea: a tenth
-# of a hertz is not a frame rate anyone means to ask for.
+# a typo rather than a preference. The tick and frame-rate limits are the same
+# idea: a tenth of a hertz is not a poll anyone means to ask for, and no display
+# refreshes faster than the upper bound.
 BEE_LIMIT = 86400.0
 TICK_LIMIT = 10.0
+FPS_LIMIT = 240.0
 DEFAULT_UNIQUE_FLOWERS = 12
 DEFAULT_POLL_INTERVAL = 1 / 30
-DEFAULT_RENDER_INTERVAL = 1 / 60
+DEFAULT_FPS = 60.0
 # The one setting with no flag. It is not a preference but a statement about
 # how the process was started - Kitty ran us as its `shell`, so the shell we
 # start needs the integration Kitty would have set up itself - and the launcher
@@ -140,6 +142,10 @@ def _unique_flowers(text: str) -> int:
     if value < 0:
         raise ValueError(f"{value} is fewer than none")
     return value
+
+
+def _fps(text: str) -> float:
+    return _number(text, low=1.0, high=FPS_LIMIT)
 
 
 def _tick(text: str) -> float:
@@ -214,6 +220,15 @@ SETTINGS = (
         "wingbeat audio while the bee is in flight, from off to 1; needs the sound extra",
     ),
     Setting(
+        "fps",
+        _fps,
+        DEFAULT_FPS,
+        f"{DEFAULT_FPS:g}",
+        "N",
+        "frames per second while the flower moves or sways, from 1 to "
+        f"{FPS_LIMIT:g}; fewer cost less CPU and the animation keeps its speed",
+    ),
+    Setting(
         "unique-flowers",
         _unique_flowers,
         DEFAULT_UNIQUE_FLOWERS,
@@ -241,15 +256,6 @@ SETTINGS = (
         "seconds between Kitty cursor-position queries",
         development=True,
     ),
-    Setting(
-        "render-interval",
-        _tick,
-        DEFAULT_RENDER_INTERVAL,
-        f"{DEFAULT_RENDER_INTERVAL:.4g}",
-        "SECONDS",
-        "seconds between animation and render ticks",
-        development=True,
-    ),
 )
 SETTINGS_BY_NAME = {setting.name: setting for setting in SETTINGS}
 
@@ -264,7 +270,7 @@ class Settings:
     unique_flowers: int
     log: Path | None
     poll_interval: float
-    render_interval: float
+    fps: float
     # Which spelling each value came from, for `--check` to report. A window
     # that behaves unexpectedly is usually being told something it was not
     # told here, and naming the source is what shortens that search.
