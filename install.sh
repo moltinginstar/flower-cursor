@@ -17,7 +17,7 @@ usage() {
     cat << 'USAGE'
 Usage: install.sh [options]
 
-  --species NAME   grow NAME instead of the default flower
+  --species NAME   grow NAME instead of the default flower (or cycle/random)
   --configure      write the Kitty settings for me, keeping a backup
   --uninstall      take those settings back out again
   --dry-run        say what would change, change nothing

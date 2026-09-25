@@ -16,6 +16,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .bee import NoBee
+from .garden import Garden
 from .layered import LayeredRuntime
 from .lifecycle import CursorCell
 from .runtime import FlowerVisual
@@ -38,11 +39,15 @@ class MultiCursorFlowers:
         manifest: Path,
         *,
         independent_limit: int = DEFAULT_INDEPENDENT_LIMIT,
-        build: Callable[[Path], LayeredRuntime] = LayeredRuntime,
+        build: Callable[..., LayeredRuntime] = LayeredRuntime,
+        garden: Garden | None = None,
     ) -> None:
         if independent_limit < 0:
             raise ValueError("independent_limit must be non-negative")
         self._manifest = manifest
+        # The window's own garden, so every cursor's buds take their turn in
+        # one cycle. Without one, each runtime grows the manifest's flower.
+        self._garden = garden
         self._limit = independent_limit
         self._build = build
         self._runtimes: list[LayeredRuntime] = []
@@ -99,7 +104,11 @@ class MultiCursorFlowers:
         while len(self._runtimes) > len(cells):
             self._retire(self._runtimes.pop())
         for _ in range(min(_BUILDS_PER_TICK, len(cells) - len(self._runtimes))):
-            runtime = self._build(self._manifest)
+            runtime = (
+                self._build(self._manifest)
+                if self._garden is None
+                else self._build(self._manifest, garden=self._garden)
+            )
             runtime.bee = NoBee()
             self._runtimes.append(runtime)
         for runtime, cell in zip(self._runtimes, cells):

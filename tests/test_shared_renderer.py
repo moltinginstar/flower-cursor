@@ -27,7 +27,11 @@ from flower_cursor.observer import DEFAULT_MANIFEST
 from flower_cursor.screen_resets import ScreenResets
 
 RECIPE = Recipe(
-    manifest=str(DEFAULT_MANIFEST), species=None, bee=None, unique_flowers=4, volume=0.0
+    flowers=((str(DEFAULT_MANIFEST), None),),
+    order="fixed",
+    bee=None,
+    unique_flowers=4,
+    volume=0.0,
 )
 SIZE = (30, 100, 1600, 990)
 
@@ -214,7 +218,11 @@ def test_a_renderer_that_goes_away_leaves_the_window_drawing_for_itself(renderer
 
 def test_a_window_the_renderer_cannot_draw_is_refused_not_hung(renderer):
     broken = Recipe(
-        manifest="/nonexistent/manifest.json", species=None, bee=None, unique_flowers=1, volume=0.0
+        flowers=(("/nonexistent/manifest.json", None),),
+        order="fixed",
+        bee=None,
+        unique_flowers=1,
+        volume=0.0,
     )
     assert shared.connect(broken, directory=renderer, tag="test", timeout=2) is None
 
@@ -427,7 +435,7 @@ def test_a_manifest_named_from_here_is_found_from_the_renderer_too(monkeypatch, 
 
     monkeypatch.chdir(tmp_path)
     settings = SimpleNamespace(
-        manifest=Path("mine/manifest.json"), species_name=None, bee=None, unique_flowers=4
+        flowers=((Path("mine/manifest.json"), None),), order="fixed", bee=None, unique_flowers=4
     )
     recipe = Recipe.from_settings(settings, volume=0.0)
     assert recipe.manifest == str(Path.cwd() / "mine" / "manifest.json")

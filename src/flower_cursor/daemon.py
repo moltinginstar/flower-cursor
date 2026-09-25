@@ -41,14 +41,20 @@ class _Shared:
         from .mixer import Mixer
 
         self.mixer = Mixer()
-        self._images: dict[tuple[str, str | None], dict] = {}
+        self._images: dict[tuple[Path, str | None], dict] = {}
         self._lock = threading.Lock()
         self.clients = 0
         self.idle_since = time.monotonic()
 
-    def images_for(self, recipe: Recipe) -> dict:
+    def images_for(self, manifest: Path, species: str | None) -> dict:
+        """One species' decoded layers, shared by every window that grows it.
+
+        A window under `cycle` or `random` asks for each species the first
+        time it draws one, so the renderer holds the species on screen
+        anywhere, once each.
+        """
         with self._lock:
-            return self._images.setdefault((recipe.manifest, recipe.species), {})
+            return self._images.setdefault((manifest, species), {})
 
     def joined(self) -> None:
         with self._lock:
@@ -103,7 +109,7 @@ def serve_window(connection: socket.socket, shared: _Shared) -> None:
                 written.extend,
                 report=said.append,
                 open_device=shared.mixer.channel,
-                images=shared.images_for(recipe),
+                images=shared.images_for,
             )
         except Exception as error:
             wire.send(connection, {"error": f"{type(error).__name__}: {error}"})

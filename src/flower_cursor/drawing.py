@@ -48,18 +48,27 @@ class Drawing(Protocol):
 class Recipe:
     """What a window's drawing is built from, in a form that crosses a socket."""
 
-    manifest: str
-    species: str | None
+    # Every flower the window can grow, as a manifest and its catalogue name
+    # (None for artwork of the user's own), and how a bud picks among them.
+    flowers: tuple[tuple[str, str | None], ...]
+    order: str
     bee: float | None
     unique_flowers: int
     volume: float
+
+    @property
+    def manifest(self) -> str:
+        """The first flower's manifest, which is the one a fixed window grows."""
+        return self.flowers[0][0]
 
     @classmethod
     def from_settings(cls, settings, volume: float) -> Recipe:
         return cls(
             # Absolute: the renderer does not share this window's directory.
-            manifest=str(Path(settings.manifest).absolute()),
-            species=settings.species_name,
+            flowers=tuple(
+                (str(Path(manifest).absolute()), name) for manifest, name in settings.flowers
+            ),
+            order=settings.order,
             bee=settings.bee,
             unique_flowers=settings.unique_flowers,
             volume=volume,
@@ -71,8 +80,11 @@ class Recipe:
     @classmethod
     def from_json(cls, data: dict) -> Recipe:
         return cls(
-            manifest=str(data["manifest"]),
-            species=None if data["species"] is None else str(data["species"]),
+            flowers=tuple(
+                (str(manifest), None if name is None else str(name))
+                for manifest, name in data["flowers"]
+            ),
+            order=str(data["order"]),
             bee=None if data["bee"] is None else float(data["bee"]),
             unique_flowers=int(data["unique_flowers"]),
             volume=float(data["volume"]),
@@ -108,22 +120,29 @@ class LocalDrawing:
         *,
         report: Callable[[str], None],
         open_device=None,
-        images: dict | None = None,
+        images: Callable[[Path, str | None], dict] | None = None,
     ) -> None:
+        from .garden import Garden
         from .graphics_renderer import FlowerRenderer
-        from .layered import LayeredCompositor, LayeredRuntime
+        from .layered import GardenCompositor, LayeredRuntime
         from .multi_runtime import MultiCursorFlowers
 
-        manifest = Path(recipe.manifest)
-        chosen = {"species": recipe.species} if recipe.species is not None else {}
+        # One garden for every cursor in the window, so a cycle carries on
+        # from one cursor's bud to the next rather than each starting over.
+        garden = Garden(
+            tuple((Path(manifest), name) for manifest, name in recipe.flowers), recipe.order
+        )
+        manifest = garden.first.manifest
         self.runtime = LayeredRuntime(
             manifest,
             bee=recipe.bee is not None,
             bee_interval=recipe.bee if recipe.bee is not None else 0.0,
-            **chosen,
+            garden=garden,
         )
-        compositor = LayeredCompositor(manifest, images=images, **chosen)
-        self.flowers = MultiCursorFlowers(manifest, independent_limit=recipe.unique_flowers)
+        compositor = GardenCompositor(garden.first, images=images)
+        self.flowers = MultiCursorFlowers(
+            manifest, independent_limit=recipe.unique_flowers, garden=garden
+        )
         self.renderer = FlowerRenderer(self.runtime.pose_library, write, compositor=compositor)
         self.buzz = _open_buzz(recipe.volume, report, open_device)
 

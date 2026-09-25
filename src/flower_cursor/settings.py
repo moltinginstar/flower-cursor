@@ -30,6 +30,14 @@ DEFAULT_MANIFEST = Path(__file__).with_name("assets") / "layered" / "manifest.js
 # Anything else is a value, so a variable left over from some other tool cannot
 # quietly empty the screen.
 OFF = "off"
+# How a window picks its flowers: one named species for good, or a new pick
+# for every bud - the next flower in the catalogue, or any other one. The two
+# words are species values rather than a setting of their own, because they
+# answer the same question the species does: which flower grows.
+FIXED = "fixed"
+CYCLE = "cycle"
+RANDOM = "random"
+ORDERS = (CYCLE, RANDOM)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,8 +116,8 @@ def _is_off(text: str) -> bool:
 
 
 def _species(text: str) -> str | Path:
-    """A bundled flower by name, or a manifest of your own by path."""
-    if text in FLOWER_MANIFESTS:
+    """A bundled flower by name, `cycle` or `random`, or a manifest of your own by path."""
+    if text in FLOWER_MANIFESTS or text in ORDERS:
         return text
     # A bundled name is a bare word, so anything that looks like a filename is
     # asking for artwork of its own rather than misspelling a flower.
@@ -118,7 +126,9 @@ def _species(text: str) -> str | Path:
         if not manifest.is_file():
             raise ValueError(f"no flower manifest at {manifest}")
         return manifest
-    raise ValueError(f"{text!r} is not a flower; there is {', '.join(FLOWER_MANIFESTS)}")
+    raise ValueError(
+        f"{text!r} is not a flower; there is {', '.join((*FLOWER_MANIFESTS, *ORDERS))}"
+    )
 
 
 def _bee(text: str) -> float | None:
@@ -198,8 +208,9 @@ SETTINGS = (
         _species,
         DEFAULT_SPECIES,
         DEFAULT_SPECIES,
-        "NAME|PATH",
-        f"which flower grows, by name or by a manifest of your own ({flower_help()})",
+        "NAME|cycle|random|PATH",
+        f"which flower grows, by name or by a manifest of your own ({flower_help()}); "
+        "cycle grows the next flower in that list at every new bloom, and random any other",
     ),
     Setting(
         "bee",
@@ -277,16 +288,39 @@ class Settings:
     sources: Mapping[str, str]
 
     @property
-    def manifest(self) -> Path:
-        """The assets this window grows, whether named or given as a path."""
+    def order(self) -> str:
+        """`cycle` or `random` when every bloom picks again, else `fixed`."""
+        return self.species if self.species in ORDERS else FIXED
+
+    @property
+    def flowers(self) -> tuple[tuple[Path, str | None], ...]:
+        """Every flower this window can grow, as a manifest and its catalogue name.
+
+        One for a named or a path-given species; the whole catalogue, in its
+        order, for `cycle` and `random`. The name is None when the artwork is
+        the user's own.
+        """
         if isinstance(self.species, Path):
-            return self.species
-        return FLOWER_MANIFESTS[self.species]
+            return ((self.species, None),)
+        if self.species in ORDERS:
+            return tuple((flower.manifest, flower.name) for flower in FLOWER_CATALOGUE)
+        return ((FLOWER_MANIFESTS[self.species], self.species),)
+
+    @property
+    def manifest(self) -> Path:
+        """The assets this window grows, whether named or given as a path.
+
+        For `cycle` and `random`, the first flower of the catalogue.
+        """
+        return self.flowers[0][0]
 
     @property
     def species_name(self) -> str | None:
-        """The catalogue name, or None when the artwork is the user's own."""
-        return None if isinstance(self.species, Path) else self.species
+        """The catalogue name, or None when the artwork is the user's own.
+
+        For `cycle` and `random`, the first flower of the catalogue.
+        """
+        return self.flowers[0][1]
 
 
 def resolve(

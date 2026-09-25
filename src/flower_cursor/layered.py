@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from .bee import DEFAULT_INTERVAL, BeePose, IdleBee, NoBee
 from .bee_art import BeeCompositor
 from .compositor import blend_samples
 from .easing import require_duration, smoothstep
+from .garden import Garden, Species
 from .geometry import FlowerLayout, ViewportGeometry
 from .lifecycle import CursorCell, FlowerInstance
 from .pose_library import PoseAsset, PoseLibrary, manifest_data
@@ -27,6 +29,9 @@ type Samples = tuple[tuple[PoseAsset, float], ...]
 @dataclass(frozen=True, slots=True, kw_only=True)
 class LayeredVisual(FlowerVisual):
     flower: SheddingFlower
+    # What it grew as, which says whose artwork draws it. None for a visual
+    # built by hand, which the compositor it is handed draws as its own.
+    species: Species | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -70,19 +75,29 @@ class LayeredRuntime:
         bee: bool = True,
         bee_interval: float = DEFAULT_INTERVAL,
         species: str | None = None,
+        garden: Garden | None = None,
     ) -> None:
-        data = manifest_data(manifest)
-        self.metadata = metadata_from_manifest(data, selected_species=species)
-        self.pose_library = PoseLibrary.from_manifest(manifest)
+        # Without a garden the window grows the one flower it was given, which
+        # is every caller's case but a window's own under `cycle` or `random`.
+        self.garden = Garden.single(manifest, species) if garden is None else garden
+        # The first flower stands for all of them wherever something has to be
+        # known before one buds: the layout, and the bee's landing bounds. The
+        # bundled flowers share their root anchor, so the layout is theirs too.
+        self.metadata = self.garden.first.metadata
+        self.pose_library = self.garden.first.pose_library
         self.flowers: list[SheddingFlower] = []
         self.active: SheddingFlower | None = None
+        # Each flower's species, by identifier: it keeps what it budded as.
+        self._species: dict[int, Species] = {}
         self._next_identifier = 1
         self.bee = (IdleBee if bee else NoBee)(bee_rng, interval=bee_interval)
         self._bee_identifier = 0
         self._bee_flower: SheddingFlower | None = None
-        self._heads = {p["name"]: p["head"] for p in data["poses"]}
         self._viewport: ViewportGeometry | None = None
         self._layout = FlowerLayout(self.pose_library.root_anchor)
+
+    def species_of(self, flower: SheddingFlower) -> Species:
+        return self._species[flower.flower.identifier]
 
     def set_geometry(self, viewport: ViewportGeometry | None, layout: FlowerLayout) -> None:
         self._viewport = viewport
@@ -91,7 +106,10 @@ class LayeredRuntime:
         self.bee.set_geometry(
             viewport, (max(1, round(width * 0.20 * 1.75)), max(1, round(height * 0.20 * 1.75)))
         )
-        support = self.metadata.landing_support_bounds
+        # The bee lands on the flower under the caret, so it rests the way
+        # that flower's species lets it.
+        metadata = self.metadata if self.active is None else self.species_of(self.active).metadata
+        support = metadata.landing_support_bounds
         if viewport is None or support is None:
             self.bee.set_landing_support_bounds(None)
         else:
@@ -109,12 +127,14 @@ class LayeredRuntime:
             (f for f in self.flowers if f.flower.cell == cell and not f.flower.dead), None
         )
         if returning is None:
+            species = self.garden.bloom()
             returning = SheddingFlower(
                 FlowerInstance.bud(self._next_identifier, cell),
                 wall_time_idle=True,
-                group_count=len(self.metadata.shedding_groups),
-                shedding_order=self.metadata.shedding_order,
+                group_count=len(species.metadata.shedding_groups),
+                shedding_order=species.metadata.shedding_order,
             )
+            self._species[self._next_identifier] = species
             self._next_identifier += 1
             self.flowers.append(returning)
         else:
@@ -123,6 +143,7 @@ class LayeredRuntime:
 
     def reset(self) -> None:
         self.flowers.clear()
+        self._species.clear()
         self.active = None
         self.bee.reset()
         self._bee_flower = None
@@ -159,12 +180,19 @@ class LayeredRuntime:
         for flower in self.flowers:
             flower.update(duration * DEFAULT_ANIMATION_SPEED, wall_duration=duration)
         self.flowers[:] = [f for f in self.flowers if not f.finished]
+        # The bee's flower may have finished withering while the bee leaves,
+        # and still needs its species to be drawn under the bee.
+        keep = {f.flower.identifier for f in self.flowers}
+        if self._bee_flower is not None:
+            keep.add(self._bee_flower.flower.identifier)
+        self._species = {k: v for k, v in self._species.items() if k in keep}
         generation = self.bee.generation
         head = None
         if self.active is not None and self._viewport is not None:
-            samples = self.pose_library.sample_animated(self.active.pose)
+            species = self.species_of(self.active)
+            samples = species.pose_library.sample_animated(self.active.pose)
             local_head = tuple(
-                sum(self._heads[a.name][i] * w for a, w in samples) for i in range(2)
+                sum(species.heads[a.name][i] * w for a, w in samples) for i in range(2)
             )
             head = self._layout.point(self.active.flower.cell, self._viewport.cell_size, local_head)
         self.bee.update(duration, head)
@@ -178,7 +206,8 @@ class LayeredRuntime:
     def visuals(self) -> tuple[FlowerVisual, ...]:
         visuals: list[FlowerVisual] = []
         for flower in self.flowers:
-            samples = self.pose_library.sample_animated(flower.pose)
+            species = self.species_of(flower)
+            samples = species.pose_library.sample_animated(flower.pose)
             visuals.append(
                 LayeredVisual(
                     flower.flower.identifier,
@@ -187,11 +216,12 @@ class LayeredRuntime:
                     samples[0][0],
                     samples,
                     flower=flower,
+                    species=species,
                 )
             )
         if self.bee.cell is not None and self._bee_flower is not None:
             pose = self._bee_flower.pose
-            samples = self.pose_library.sample_animated(pose)
+            samples = self.species_of(self._bee_flower).pose_library.sample_animated(pose)
             visuals.append(
                 BeeVisual(
                     self._bee_identifier,
@@ -473,3 +503,53 @@ class LayeredCompositor:
     def retain(self, identifiers: set[int]) -> None:
         """Drop every petal belonging to a flower that is no longer drawn."""
         self._flights = {k: v for k, v in self._flights.items() if k[0] in identifiers}
+
+
+class GardenCompositor:
+    """Draw every flower with its own species' artwork.
+
+    One `LayeredCompositor` per species, built the first time a flower of it
+    is drawn, so a window growing one flower holds exactly what it did before
+    and a window under `cycle` holds the species it has actually shown. The
+    bee is the same whatever it visits, and the first species' compositor
+    draws it.
+    """
+
+    def __init__(
+        self,
+        first: Species,
+        size: int = 256,
+        *,
+        images: Callable[[Path, str | None], dict] | None = None,
+    ) -> None:
+        self._size = size
+        self._images = images
+        self._first = first
+        self._compositors: dict[Species, LayeredCompositor] = {}
+        self._compositor(first)
+
+    def _compositor(self, species: Species) -> LayeredCompositor:
+        compositor = self._compositors.get(species)
+        if compositor is None:
+            compositor = LayeredCompositor(
+                species.manifest,
+                self._size,
+                species=species.name,
+                images=None
+                if self._images is None
+                else self._images(species.manifest, species.name),
+            )
+            self._compositors[species] = compositor
+        return compositor
+
+    @property
+    def canvas_scale(self) -> int:
+        return self._compositors[self._first].canvas_scale
+
+    def frame(self, visual: FlowerVisual, duration: float = 1 / 60) -> Image.Image:
+        species = visual.species if isinstance(visual, LayeredVisual) else None
+        return self._compositor(self._first if species is None else species).frame(visual, duration)
+
+    def retain(self, identifiers: set[int]) -> None:
+        for compositor in self._compositors.values():
+            compositor.retain(identifiers)

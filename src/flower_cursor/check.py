@@ -166,6 +166,10 @@ def _setting_lines(settings: Settings) -> list[tuple[str, str, str]]:
 def _value_text(name: str, value: object) -> str:
     """One setting's value, in the words the setting is about."""
     match name, value:
+        case "species", "cycle":
+            return "cycle, the next flower at every bloom"
+        case "species", "random":
+            return "random, another flower at every bloom"
         case "species", _:
             return f"{value}"
         case "bee", None:
