@@ -27,6 +27,8 @@ ORIGINAL_STEM_POINT = authored.stem_point
 
 
 def stem_point(t, stem_length, bend, head_lean, collapse=0.0):
+    """Withdraw authored length without changing the lifecycle's retained stem channel."""
+    stem_length *= 1.0 - collapse
     standing = ORIGINAL_STEM_POINT(t, stem_length, bend, head_lean, 0.0)
     if collapse <= 0 or t <= 0:
         return standing
