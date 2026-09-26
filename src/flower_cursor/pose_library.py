@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from .easing import clamp01
+from .easing import clamp01, smoothstep
 from .lifecycle import FlowerPose
 from .manifest import manifest_data
 
@@ -35,7 +35,11 @@ class PoseAsset:
 
 class PoseLibrary:
     def __init__(
-        self, assets: tuple[PoseAsset, ...], *, root_anchor: tuple[float, float] = (0.5, 1.0)
+        self,
+        assets: tuple[PoseAsset, ...],
+        *,
+        root_anchor: tuple[float, float] = (0.5, 1.0),
+        growth_idle_handoff: bool = False,
     ) -> None:
         if not assets:
             raise ValueError("pose library must contain at least one asset")
@@ -48,6 +52,8 @@ class PoseLibrary:
         }
         self._idle_phases = tuple(sorted(idle))
         self._idle_assets = tuple(idle[phase] for phase in self._idle_phases)
+        growth = tuple(asset for asset in assets if asset.name.startswith("grow_"))
+        self._growth = PoseLibrary(growth) if growth_idle_handoff and growth else None
 
     @classmethod
     def from_manifest(cls, manifest_path: Path) -> PoseLibrary:
@@ -81,7 +87,11 @@ class PoseLibrary:
         missing = [str(asset.path) for asset in assets if not asset.path.is_file()]
         if missing:
             raise FileNotFoundError(", ".join(missing))
-        return cls(assets, root_anchor=tuple(data.get("root_anchor", (0.5, 1.0))))
+        return cls(
+            assets,
+            root_anchor=tuple(data.get("root_anchor", (0.5, 1.0))),
+            growth_idle_handoff=data.get("growth_idle_handoff", False),
+        )
 
     @property
     def assets(self) -> tuple[PoseAsset, ...]:
@@ -101,11 +111,25 @@ class PoseLibrary:
         total = sum(weight for _, weight in weighted)
         return tuple((asset, weight / total) for asset, weight in weighted if weight > 1e-8)
 
+    def _entry_sample(self, pose: FlowerPose) -> tuple[tuple[PoseAsset, float], ...]:
+        """Exclude idle neighbors before crossfading, without a health-threshold snap."""
+        amount = smoothstep((min(pose.bloom, pose.vitality) - 0.90) / 0.05)
+        if self._growth is None or amount == 0:
+            return self.sample(pose)
+        growth = self._growth.sample(pose)
+        if amount == 1:
+            return growth
+        weights: dict[PoseAsset, float] = {}
+        for samples, gain in ((self.sample(pose), 1 - amount), (growth, amount)):
+            for asset, weight in samples:
+                weights[asset] = weights.get(asset, 0.0) + weight * gain
+        return tuple(weights.items())
+
     def sample_animated(self, pose: FlowerPose) -> tuple[tuple[PoseAsset, float], ...]:
         """Blend into a phase-linear idle ring as the biological state settles."""
         progress = clamp01((min(pose.stem, pose.bloom, pose.vitality) - 0.95) / 0.045)
         if progress == 0 or len(self._idle_assets) < 2:
-            return self.sample(pose)
+            return self._entry_sample(pose)
         phase = pose.idle_phase % math.tau
         upper = bisect_right(self._idle_phases, phase) % len(self._idle_assets)
         lower = (upper - 1) % len(self._idle_assets)
@@ -120,7 +144,7 @@ class PoseLibrary:
             return idle
         amount = progress * progress * (3 - 2 * progress)
         weights: dict[PoseAsset, float] = {}
-        for samples, gain in ((self.sample(pose), 1 - amount), (idle, amount)):
+        for samples, gain in ((self._entry_sample(pose), 1 - amount), (idle, amount)):
             for asset, weight in samples:
                 weights[asset] = weights.get(asset, 0.0) + weight * gain
         return tuple(weights.items())

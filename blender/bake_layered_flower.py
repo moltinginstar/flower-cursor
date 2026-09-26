@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import sys
 from dataclasses import asdict
@@ -17,8 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import study_shedding as study
+from entry_poses import growth_idle_poses
 
-from flower_cursor.idle_motion import IDLE_ANGULAR_SPEED, idle_pose
 from flower_cursor.lifecycle import CursorCell, FlowerInstance
 from flower_cursor.shedding import SheddingFlower
 
@@ -26,18 +25,7 @@ OUTPUT = Path(os.environ.get("FLOWER_LAYER_DIR", "/tmp/flower-layered-v1"))
 
 
 def poses():
-    flower = SheddingFlower(FlowerInstance.bud(1, CursorCell(0, 0)))
-    for index in range(36):
-        yield f"grow_{index:02d}", flower.pose
-        flower.update(1 / 24)
-    mature = FlowerInstance.bud(1, CursorCell(0, 0))
-    mature.update(8)
-    mature.idle_phase = 0
-    for index in range(24):
-        yield (
-            f"idle_{index:02d}",
-            idle_pose(mature.pose, index * math.tau / (24 * IDLE_ANGULAR_SPEED)),
-        )
+    yield from growth_idle_poses()
     for label, warmup in (("young", 0.25), ("half", 0.5), ("full", 3.0)):
         flower = SheddingFlower(FlowerInstance.bud(1, CursorCell(0, 0)))
         flower.update(warmup)
