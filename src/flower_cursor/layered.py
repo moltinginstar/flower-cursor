@@ -191,8 +191,9 @@ class LayeredRuntime:
         if self.active is not None and self._viewport is not None:
             species = self.species_of(self.active)
             samples = species.pose_library.sample_animated(self.active.pose)
-            local_head = tuple(
-                sum(species.heads[a.name][i] * w for a, w in samples) for i in range(2)
+            local_head = (
+                sum(species.heads[a.name][0] * w for a, w in samples),
+                sum(species.heads[a.name][1] * w for a, w in samples),
             )
             head = self._layout.point(self.active.flower.cell, self._viewport.cell_size, local_head)
         self.bee.update(duration, head)
