@@ -106,7 +106,9 @@ def window_id(pid: int) -> str:
     script.write(WINDOW_SWIFT)
     script.flush()
     for _ in range(10):
-      found = subprocess.run(["swift", script.name, str(pid)], capture_output=True, text=True).stdout.strip()
+      found = subprocess.run(
+        ["swift", script.name, str(pid)], capture_output=True, text=True, check=False
+      ).stdout.strip()
       if found:
         return found
       time.sleep(0.5)
@@ -123,7 +125,7 @@ def main() -> None:
   parser.add_argument("--dry-run", action="store_true", help="drive the scene without recording")
   args = parser.parse_args()
 
-  stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+  stamp = datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
   out = args.out or Path.home() / "Movies" / f"flower-cursor-take-{stamp}.mov"
   socket = f"/tmp/flower-cursor-demo-{stamp}.sock"
   width, height = args.size.split(",")

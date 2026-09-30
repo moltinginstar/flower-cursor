@@ -284,7 +284,8 @@ class RemoteDrawing:
       return
     try:
       self.local = self._fallback()
-    except Exception as error:
+    # Last resort: the shell outlives any flower that cannot be grown.
+    except Exception as error:  # noqa: BLE001
       self._report(f"flower-cursor: the shared renderer went away and no flower could be grown here ({error})")
       self.local = _Inert()
       return

@@ -16,6 +16,7 @@ writes to stdout - that file descriptor is the terminal transport.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import math
 import queue
@@ -382,7 +383,8 @@ class BeeBuzz:
         except ImportError:
           self._fail(MISSING_BACKEND)
           return
-        except Exception as error:  # no card, no server, no permission
+        # No card, no server, no permission: every backend fails its own way.
+        except Exception as error:  # noqa: BLE001
           self._fail(f"flower-cursor: no audio device for the bee ({error}); it stays silent")
           return
       try:
@@ -390,7 +392,7 @@ class BeeBuzz:
           device.start(stream)
         else:
           device.stop()
-      except Exception as error:
+      except Exception as error:  # noqa: BLE001
         self._fail(f"flower-cursor: could not play bee audio ({error}); it stays silent")
         self._shutdown(device)
         return
@@ -451,8 +453,13 @@ class BeeBuzz:
 
   @staticmethod
   def _shutdown(device: Device) -> None:
-    for method in ("stop", "close"):
-      try:
-        getattr(device, method)()
-      except Exception:
-        pass
+    shut_down(device)
+
+
+def shut_down(device: Device) -> None:
+  """Stop and close an audio device, whatever state its backend is in."""
+  for method in ("stop", "close"):
+    # A backend that failed once may fail again on the way out, with any
+    # error it likes; nothing is left to report it to.
+    with contextlib.suppress(Exception):
+      getattr(device, method)()

@@ -2,6 +2,7 @@ import hashlib
 import json
 import math
 import random
+from itertools import pairwise
 
 import pytest
 
@@ -207,7 +208,7 @@ def test_curved_approach_accelerates_brakes_and_only_drifts_during_hover():
   while bee.age < bee.hover_time - 1e-10:
     bee.update(min(1 / 120, bee.hover_time - bee.age), HEAD)
     samples.append((bee.x, bee.y, math.hypot(bee.vx, bee.vy)))
-  assert all(a[0] > b[0] for a, b in zip(samples, samples[1:]))
+  assert all(a[0] > b[0] for a, b in pairwise(samples))
   assert samples[29][2] < max(s[2] for s in samples) / 2
   assert samples[-1][2] < max(s[2] for s in samples) / 20
   end = (bee.x, bee.y)

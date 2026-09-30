@@ -225,7 +225,7 @@ def main():
   flower.update(0.55)
   checkpoints.append(("wilt", flower.pose))
   for name, pose in checkpoints:
-    scene, _ = build_scene(pose, output / f"{name}.png")
+    build_scene(pose, output / f"{name}.png")
     if name == "idle":
       bpy.ops.wm.save_as_mainfile(filepath=str(output / "cornflower.blend"))
     bpy.ops.render.render(write_still=True)

@@ -143,9 +143,7 @@ def build_scene(kind, pose, path):
       if obj.name in orchid_groups:
         layer = f"petal_{orchid_groups[obj.name]}"
     obj = mesh_world(obj)
-    if kind == "crocus" and obj.name == "Crocus anther 0":
-      contact = sum((v.co for v in obj.data.vertices), Vector()) / len(obj.data.vertices)
-    elif kind == "orchid" and obj.name == "Orchid staminode":
+    if kind == "crocus" and obj.name == "Crocus anther 0" or kind == "orchid" and obj.name == "Orchid staminode":
       contact = sum((v.co for v in obj.data.vertices), Vector()) / len(obj.data.vertices)
     obj["layer"] = layer
     scale = head_scale * (1 - rot if layer == "head" else 1)

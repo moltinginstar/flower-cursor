@@ -38,7 +38,7 @@ def decode(output, viewport):
   placements = []
   layers = []
   pattern = rb"\x1b\[(\d+);(\d+)H|\x1b_G([^;]*);(.*?)\x1b\\"
-  for match in re.finditer(pattern, output, re.S):
+  for match in re.finditer(pattern, output, re.DOTALL):
     row, column, header, chunk = match.groups()
     if row is not None:
       cw, ch = viewport.cell_size

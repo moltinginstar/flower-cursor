@@ -34,11 +34,11 @@ raise SystemExit(main(['--bee', '0.05', '--', sys.executable, '-c', {_CHILD!r}])
 
 def placements(output):
   result = []
-  for match in re.finditer(rb"\x1b\[s\x1b\[(\d+);(\d+)H(.*?)\x1b\[u", output, re.S):
+  for match in re.finditer(rb"\x1b\[s\x1b\[(\d+);(\d+)H(.*?)\x1b\[u", output, re.DOTALL):
     row, column, graphics = match.groups()
     parts = [
       (dict(item.split("=", 1) for item in parameters.decode().split(",")), payload)
-      for parameters, payload in re.findall(rb"\x1b_G([^;]*);(.*?)\x1b\\", graphics, re.S)
+      for parameters, payload in re.findall(rb"\x1b_G([^;]*);(.*?)\x1b\\", graphics, re.DOTALL)
     ]
     transfers = [(p, payload) for p, payload in parts if p.get("a") == "T" or "a" not in p]
     if not transfers:
@@ -77,7 +77,7 @@ def drive_observer(dimensions, *, lose_geometry=False):
           os.write(master, b"\x1b[?9;13R")
         query_tail = queries[-4:]
       now = time.monotonic()
-      bee_drawn = re.search(rb"a=T,[^;]*,p=2[,;].*?\x1b\[u", output, re.S)
+      bee_drawn = re.search(rb"a=T,[^;]*,p=2[,;].*?\x1b\[u", output, re.DOTALL)
       if lose_geometry and lost_at is None and bee_drawn:
         cutoff = len(output)
         lost_at = now

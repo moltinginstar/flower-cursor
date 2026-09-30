@@ -40,7 +40,7 @@ def grown() -> tuple[LayeredRuntime, LayeredCompositor]:
 def commands(output: bytes) -> list[tuple[dict[str, str], bytes]]:
   return [
     (dict(item.split("=", 1) for item in parameters.decode().split(",")), payload)
-    for parameters, payload in re.findall(rb"\x1b_G([^;]*);(.*?)\x1b\\", output, re.S)
+    for parameters, payload in re.findall(rb"\x1b_G([^;]*);(.*?)\x1b\\", output, re.DOTALL)
   ]
 
 
@@ -79,7 +79,7 @@ def test_renderer_uses_absolute_placement_and_native_pixels_at_the_root() -> Non
 
 
 def test_expanded_canvas_preserves_root_position_and_native_flower_scale() -> None:
-  runtime, compositor = grown()
+  runtime, _ = grown()
   old_root = runtime.pose_library.root_anchor
   expanded = PoseLibrary(runtime.pose_library.assets, root_anchor=(old_root[0] / 2 + 0.25, old_root[1] / 2))
 
@@ -301,7 +301,7 @@ def test_two_renderers_in_one_window_do_not_share_image_ids() -> None:
 
 def _copies(count: int):
   """One flower's visual stamped at many cells, as the copies path produces."""
-  runtime, compositor = grown()
+  runtime, _ = grown()
   source = runtime.visuals()[0]
   return tuple(
     replace(

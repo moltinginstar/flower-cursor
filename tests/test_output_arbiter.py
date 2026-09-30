@@ -22,7 +22,7 @@ def test_naive_chunk_forwarding_corrupts_a_split_graphics_command() -> None:
   flower = place_image(image_id=7, placement_id=7, columns=1, rows=1)
   split = child.index(b";") + 8
   interleaved = child[:split] + flower + child[split:]
-  frame = re.search(rb"\x1b_G(.*?)\x1b\\", interleaved, re.S)
+  frame = re.search(rb"\x1b_G(.*?)\x1b\\", interleaved, re.DOTALL)
   assert frame is not None
 
   with pytest.raises((binascii.Error, ValueError)):

@@ -39,7 +39,7 @@ def user_shell(environ: Mapping[str, str] | None = None) -> str:
     import pwd
 
     return pwd.getpwuid(os.geteuid()).pw_shell or "/bin/sh"
-  except Exception:
+  except ImportError, KeyError:  # no pwd module, or a uid with no passwd entry
     return "/bin/sh"
 
 

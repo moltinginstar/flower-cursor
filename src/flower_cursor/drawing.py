@@ -100,7 +100,8 @@ def _open_buzz(volume: float, report, open_device):
     options = {} if open_device is None else {"open_device": open_device}
     candidate = BeeBuzz(volume=volume, report=report, **options)
     return candidate if candidate.start() else None
-  except Exception as error:
+  # The bee's sound is optional, so no failure to start it may cost the flower.
+  except Exception as error:  # noqa: BLE001
     report(f"flower-cursor: no bee audio ({error})")
     return None
 

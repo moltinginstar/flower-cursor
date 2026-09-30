@@ -1,6 +1,7 @@
 """`cycle` and `random`: a new species for every bloom, not one per window."""
 
 import random
+from itertools import pairwise
 
 import pytest
 
@@ -70,7 +71,7 @@ def test_cycle_does_not_start_every_window_on_the_same_flower():
 def test_random_never_picks_the_same_flower_twice_running_and_reaches_them_all():
   garden = Garden(FLOWERS, "random", rng=random.Random(7))
   picked = [garden.bloom().name for _ in range(200)]
-  assert all(a != b for a, b in zip(picked, picked[1:]))
+  assert all(a != b for a, b in pairwise(picked))
   assert set(picked) == set(NAMES)
 
 

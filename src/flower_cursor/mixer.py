@@ -17,7 +17,7 @@ import threading
 from array import array
 from collections.abc import Callable, Generator
 
-from .buzz import SAMPLE_RATE, Device, _open_miniaudio
+from .buzz import SAMPLE_RATE, Device, _open_miniaudio, shut_down
 
 
 class Mixer:
@@ -88,11 +88,7 @@ class Mixer:
       self._voices = ()
       self._running = False
     if device is not None:
-      for method in ("stop", "close"):
-        try:
-          getattr(device, method)()
-        except Exception:
-          pass
+      shut_down(device)
 
 
 class _Channel:

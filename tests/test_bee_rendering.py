@@ -29,7 +29,7 @@ def rgba_pixels(image):
 def commands(output):
   return [
     (dict(item.split("=", 1) for item in parameters.decode().split(",")), payload)
-    for parameters, payload in re.findall(rb"\x1b_G([^;]*);(.*?)\x1b\\", output, re.S)
+    for parameters, payload in re.findall(rb"\x1b_G([^;]*);(.*?)\x1b\\", output, re.DOTALL)
   ]
 
 
@@ -66,7 +66,7 @@ class KittyScene:
     self.pending = None
 
   def feed(self, output):
-    tokens = re.finditer(rb"\x1b_G([^;]*);(.*?)\x1b\\|\x1b\[(\d+);(\d+)H|\x1b\[([su])", output, re.S)
+    tokens = re.finditer(rb"\x1b_G([^;]*);(.*?)\x1b\\|\x1b\[(\d+);(\d+)H|\x1b\[([su])", output, re.DOTALL)
     for token in tokens:
       control, payload, row, column, save_restore = token.groups()
       if row is not None:
@@ -157,7 +157,7 @@ def scene():
 def test_real_rest_tracks_rendered_head_with_top_crop_left_crop_and_custom_layout(cell, custom):
   runtime = LayeredRuntime(DEFAULT_MANIFEST, bee_rng=random.Random(31))
   compositor = LayeredCompositor(DEFAULT_MANIFEST)
-  options = dict(columns=7, rows=3, anchor_columns=2, anchor_rows=2) if custom else {}
+  options = {"columns": 7, "rows": 3, "anchor_columns": 2, "anchor_rows": 2} if custom else {}
   renderer = FlowerRenderer(runtime.pose_library, lambda _: None, compositor=compositor, canvas_scale=2, **options)
   runtime.set_geometry(VIEWPORT, renderer.layout)
   runtime.move_to(cell)
@@ -399,7 +399,7 @@ def test_real_flower_pixels_and_placement_unchanged_by_shared_geometry(cell, cus
   runtime = LayeredRuntime(DEFAULT_MANIFEST)
   compositor = LayeredCompositor(DEFAULT_MANIFEST)
   writes = []
-  options = dict(columns=7, rows=3, anchor_columns=2, anchor_rows=2) if custom else {}
+  options = {"columns": 7, "rows": 3, "anchor_columns": 2, "anchor_rows": 2} if custom else {}
   renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor, canvas_scale=2, **options)
   runtime.move_to(cell)
   advance(runtime, 1)
@@ -429,8 +429,8 @@ def test_primary_only_bee_survives_independent_copies_transitions_with_unique_id
   stamp = runtime.active.flower.identifier
   primary_bee = next(v for v in runtime.visuals() if isinstance(v, BeeVisual))
   bee_id = None
-  for cells in (cells, (*cells, CursorCell(8, 50)), cells, (), (*cells, CursorCell(8, 50))):
-    extras.update(cells, 0)
+  for step in (cells, (*cells, CursorCell(8, 50)), cells, (), (*cells, CursorCell(8, 50))):
+    extras.update(step, 0)
     # A transition leaves the flowers it dropped withering on screen; this
     # test counts what is settled, so let them finish going first.
     extras.advance(1.5)
@@ -446,14 +446,14 @@ def test_primary_only_bee_survives_independent_copies_transitions_with_unique_id
       bee_id = visitors[0].identifier
     assert visitors[0].identifier == bee_id
     assert len({v.identifier for v in visuals}) == len(visuals)
-    assert len(visuals) == len(cells) + 2
-    assert extras.degraded == (len(cells) > 2)
+    assert len(visuals) == len(step) + 2
+    assert extras.degraded == (len(step) > 2)
     writes.clear()
     renderer.render(visuals, A, viewport=VIEWPORT)
     if extras.degraded:
       transfers = [p for p, _ in commands(b"".join(writes)) if p.get("a") == "t"]
       placements = [p for p, _ in commands(b"".join(writes)) if p.get("a") == "p"]
-      assert len(transfers) == 1 and len(placements) == len(cells)
+      assert len(transfers) == 1 and len(placements) == len(step)
       assert all(p["p"] != str(bee_id) for p in placements)
   extras.reset()
   runtime.reset()

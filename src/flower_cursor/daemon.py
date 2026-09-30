@@ -111,7 +111,9 @@ def serve_window(connection: socket.socket, shared: _Shared) -> None:
         open_device=shared.mixer.channel,
         images=shared.images_for,
       )
-    except Exception as error:
+    # Whatever stops this window's flower is the window's to hear about, and
+    # must not take the renderer down for every other window it serves.
+    except Exception as error:  # noqa: BLE001
       wire.send(connection, {"error": f"{type(error).__name__}: {error}"})
       return
     from .graphics_renderer import _ID_SPAN
@@ -149,7 +151,8 @@ def serve_window(connection: socket.socket, shared: _Shared) -> None:
       said.clear()
       if drawing is None:
         return
-  except Exception:
+  # One window's failure must not end the renderer for the others.
+  except Exception:  # noqa: BLE001
     traceback.print_exc(file=sys.stderr)
     sys.stderr.flush()
   finally:
@@ -158,7 +161,7 @@ def serve_window(connection: socket.socket, shared: _Shared) -> None:
       # buzzing. What it drew is its wrapper's to clean up.
       try:
         drawing.close()
-      except Exception:
+      except Exception:  # noqa: BLE001
         traceback.print_exc(file=sys.stderr)
     connection.close()
     shared.left()

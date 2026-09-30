@@ -1,4 +1,5 @@
 import math
+from itertools import pairwise
 
 import pytest
 
@@ -42,4 +43,4 @@ def test_stalk_settles_near_root_without_sideways_plop():
 def test_sag_is_continuous_and_never_rebounds_upward(t):
   heights = [wilt_point(t, i / 100)[2] for i in range(101)]
   assert heights == sorted(heights, reverse=True)
-  assert max(a - b for a, b in zip(heights, heights[1:])) < 0.04
+  assert max(a - b for a, b in pairwise(heights)) < 0.04
