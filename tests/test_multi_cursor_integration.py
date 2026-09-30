@@ -15,16 +15,16 @@ from flower_cursor.multi_cursor import CLEAR_ALL
 _EMPTY_REPORT = b"\x1b[>100 q"
 
 _CHILD = (
-    "import os,time,select,tty\n"
-    "tty.setraw(0)\n"
-    "os.write(1, b'\\x1b[>2;2:3:4;2:5:6 q')\n"
-    "time.sleep(0.3)\n"
-    "os.write(1, b'\\x1b[>100 q')\n"
-    "buffer = b''\n"
-    "deadline = time.time() + 5\n"
-    "while not buffer.endswith(b'q') and time.time() < deadline:\n"
-    "    if select.select([0],[],[],0.2)[0]: buffer += os.read(0,256)\n"
-    "os.write(1, b'REPLY[' + buffer.replace(b'\\x1b', b'ESC') + b']')\n"
+  "import os,time,select,tty\n"
+  "tty.setraw(0)\n"
+  "os.write(1, b'\\x1b[>2;2:3:4;2:5:6 q')\n"
+  "time.sleep(0.3)\n"
+  "os.write(1, b'\\x1b[>100 q')\n"
+  "buffer = b''\n"
+  "deadline = time.time() + 5\n"
+  "while not buffer.endswith(b'q') and time.time() < deadline:\n"
+  "    if select.select([0],[],[],0.2)[0]: buffer += os.read(0,256)\n"
+  "os.write(1, b'REPLY[' + buffer.replace(b'\\x1b', b'ESC') + b']')\n"
 )
 
 _RUNNER = f"""
@@ -60,41 +60,41 @@ raise SystemExit(run(
 
 
 def _drive() -> bytes:
-    """Play the terminal: run the wrapper on a PTY and answer its reports."""
-    master_fd, slave_fd = pty.openpty()
-    process = subprocess.Popen(
-        [sys.executable, "-c", _RUNNER],
-        stdin=slave_fd,
-        stdout=slave_fd,
-        stderr=subprocess.PIPE,
-    )
-    os.close(slave_fd)
-    seen = bytearray()
-    answered = False
-    deadline = time.time() + 20
-    try:
-        while time.time() < deadline and b"REPLY[" not in seen:
-            if not select.select([master_fd], [], [], 0.2)[0]:
-                continue
-            try:
-                chunk = os.read(master_fd, 4096)
-            except OSError:
-                break
-            if not chunk:
-                break
-            seen.extend(chunk)
-            if not answered and _EMPTY_REPORT in seen:
-                # Kitty replies to the query the child sent through us.
-                answered = True
-                os.write(master_fd, _EMPTY_REPORT)
-    finally:
-        process.terminate()
-        process.wait(timeout=10)
-        os.close(master_fd)
-    return bytes(seen)
+  """Play the terminal: run the wrapper on a PTY and answer its reports."""
+  master_fd, slave_fd = pty.openpty()
+  process = subprocess.Popen(
+    [sys.executable, "-c", _RUNNER],
+    stdin=slave_fd,
+    stdout=slave_fd,
+    stderr=subprocess.PIPE,
+  )
+  os.close(slave_fd)
+  seen = bytearray()
+  answered = False
+  deadline = time.time() + 20
+  try:
+    while time.time() < deadline and b"REPLY[" not in seen:
+      if not select.select([master_fd], [], [], 0.2)[0]:
+        continue
+      try:
+        chunk = os.read(master_fd, 4096)
+      except OSError:
+        break
+      if not chunk:
+        break
+      seen.extend(chunk)
+      if not answered and _EMPTY_REPORT in seen:
+        # Kitty replies to the query the child sent through us.
+        answered = True
+        os.write(master_fd, _EMPTY_REPORT)
+  finally:
+    process.terminate()
+    process.wait(timeout=10)
+    os.close(master_fd)
+  return bytes(seen)
 
 
 def test_kittys_cursors_are_cleared_and_its_report_answered_from_our_record() -> None:
-    output = _drive()
-    assert CLEAR_ALL in output, output[-400:]
-    assert b"REPLY[ESC[>100;2:2:3:4;2:2:5:6 q]" in output, output[-400:]
+  output = _drive()
+  assert CLEAR_ALL in output, output[-400:]
+  assert b"REPLY[ESC[>100;2:2:3:4;2:2:5:6 q]" in output, output[-400:]

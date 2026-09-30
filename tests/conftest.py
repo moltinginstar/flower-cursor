@@ -23,6 +23,6 @@ _PREFIX = "FLOWER_CURSOR_"
 
 @pytest.fixture(autouse=True)
 def _default_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in [name for name in os.environ if name.startswith(_PREFIX)]:
-        monkeypatch.delenv(name)
-    monkeypatch.setenv("FLOWER_CURSOR_DAEMON", "off")
+  for name in [name for name in os.environ if name.startswith(_PREFIX)]:
+    monkeypatch.delenv(name)
+  monkeypatch.setenv("FLOWER_CURSOR_DAEMON", "off")

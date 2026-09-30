@@ -45,7 +45,7 @@ packages = ["src/flower_cursor"]
 [dependency-groups]
 dev = [
     "pytest>=9.1",
-    # `target-version = "py314"` below needs a ruff that knows about 3.14.
+    # `requires-python = ">=3.14"` needs a ruff that knows about 3.14.
     "ruff>=0.16",
     # The same backend the `sound` extra installs, repeated because `uv run`
     # re-syncs the environment to the default set and uninstalls anything an
@@ -62,11 +62,9 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.ruff]
-target-version = "py314"
-line-length = 100
+line-length = 120
+indent-width = 2
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
-
-[tool.ruff.format]
-quote-style = "double"
+ignore = ["E722", "E731", "F722"]
+extend-select = ["I"]

@@ -7,48 +7,45 @@ from pathlib import Path
 
 
 def test_wheel_contains_identical_artwork_and_runs_outside_checkout(tmp_path):
-    root = Path(__file__).resolve().parents[1]
-    uv = shutil.which("uv")
-    assert uv is not None
-    subprocess.run(
-        [uv, "build", "--wheel", "--out-dir", str(tmp_path)],
-        cwd=root,
-        check=True,
-        capture_output=True,
-    )
-    wheel = next(tmp_path.glob("*.whl"))
-    manifest = json.loads((root / "src/flower_cursor/assets/bee/manifest.json").read_text())
-    suffixes = [f"_{heading:+03d}" if heading else "" for heading in manifest["headings"]]
-    frames = {f"bee_{index:02d}{suffix}.png" for index in range(16) for suffix in suffixes}
-    assert len(frames) == 160
-    assert set(manifest["frames"]) == frames
-    with zipfile.ZipFile(wheel) as archive:
-        assert {
-            Path(name).name
-            for name in archive.namelist()
-            if name.startswith("flower_cursor/assets/bee/") and name.endswith(".png")
-        } == frames
-        for kind in ("bee", "layered"):
-            source = root / "src/flower_cursor/assets" / kind
-            for path in source.iterdir():
-                if path.is_file():
-                    assert (
-                        archive.read(f"flower_cursor/assets/{kind}/{path.name}")
-                        == path.read_bytes()
-                    )
-    environment = os.environ.copy()
-    environment.pop("PYTHONPATH", None)
-    environment["FLOWER_CURSOR_CHECKOUT"] = str(root)
-    subprocess.run(
-        [
-            uv,
-            "run",
-            "--no-project",
-            "--with",
-            str(wheel),
-            "python",
-            "-c",
-            """
+  root = Path(__file__).resolve().parents[1]
+  uv = shutil.which("uv")
+  assert uv is not None
+  subprocess.run(
+    [uv, "build", "--wheel", "--out-dir", str(tmp_path)],
+    cwd=root,
+    check=True,
+    capture_output=True,
+  )
+  wheel = next(tmp_path.glob("*.whl"))
+  manifest = json.loads((root / "src/flower_cursor/assets/bee/manifest.json").read_text())
+  suffixes = [f"_{heading:+03d}" if heading else "" for heading in manifest["headings"]]
+  frames = {f"bee_{index:02d}{suffix}.png" for index in range(16) for suffix in suffixes}
+  assert len(frames) == 160
+  assert set(manifest["frames"]) == frames
+  with zipfile.ZipFile(wheel) as archive:
+    assert {
+      Path(name).name
+      for name in archive.namelist()
+      if name.startswith("flower_cursor/assets/bee/") and name.endswith(".png")
+    } == frames
+    for kind in ("bee", "layered"):
+      source = root / "src/flower_cursor/assets" / kind
+      for path in source.iterdir():
+        if path.is_file():
+          assert archive.read(f"flower_cursor/assets/{kind}/{path.name}") == path.read_bytes()
+  environment = os.environ.copy()
+  environment.pop("PYTHONPATH", None)
+  environment["FLOWER_CURSOR_CHECKOUT"] = str(root)
+  subprocess.run(
+    [
+      uv,
+      "run",
+      "--no-project",
+      "--with",
+      str(wheel),
+      "python",
+      "-c",
+      """
 import base64
 import io
 import json
@@ -141,9 +138,9 @@ assert b'a=d,d=I' in b''.join(writes)
 assert not renderer._image_bases
 
 """,
-        ],
-        cwd=tmp_path,
-        env=environment,
-        check=True,
-        capture_output=True,
-    )
+    ],
+    cwd=tmp_path,
+    env=environment,
+    check=True,
+    capture_output=True,
+  )

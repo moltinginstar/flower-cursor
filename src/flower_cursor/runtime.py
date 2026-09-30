@@ -17,11 +17,11 @@ DEFAULT_ANIMATION_SPEED = 2.0
 
 @dataclass(frozen=True, slots=True)
 class FlowerVisual:
-    identifier: int
-    cell: CursorCell
-    pose: FlowerPose
-    asset: PoseAsset
-    samples: tuple[tuple[PoseAsset, float], ...] = ()
-    # Set when several visuals are known to composite to the same frame, so the
-    # renderer can draw one and place it many times.
-    appearance: object | None = None
+  identifier: int
+  cell: CursorCell
+  pose: FlowerPose
+  asset: PoseAsset
+  samples: tuple[tuple[PoseAsset, float], ...] = ()
+  # Set when several visuals are known to composite to the same frame, so the
+  # renderer can draw one and place it many times.
+  appearance: object | None = None

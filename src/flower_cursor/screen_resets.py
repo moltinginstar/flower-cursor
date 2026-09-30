@@ -24,21 +24,21 @@ _TAIL = 128
 
 
 class ScreenResets:
-    """Pick the screen-changing sequences out of a child's output, read by read."""
+  """Pick the screen-changing sequences out of a child's output, read by read."""
 
-    def __init__(self) -> None:
-        self._tail = b""
+  def __init__(self) -> None:
+    self._tail = b""
 
-    def feed(self, data: bytes) -> list[bytes]:
-        previous = len(self._tail)
-        combined = self._tail + data
-        found = []
-        for match in _RESETS.finditer(combined):
-            if match.end() <= previous:
-                continue
-            modes = match.group(1)
-            if modes is not None and not _SCREEN_MODES.intersection(modes.split(b";")):
-                continue
-            found.append(match.group())
-        self._tail = combined[-_TAIL:]
-        return found
+  def feed(self, data: bytes) -> list[bytes]:
+    previous = len(self._tail)
+    combined = self._tail + data
+    found = []
+    for match in _RESETS.finditer(combined):
+      if match.end() <= previous:
+        continue
+      modes = match.group(1)
+      if modes is not None and not _SCREEN_MODES.intersection(modes.split(b";")):
+        continue
+      found.append(match.group())
+    self._tail = combined[-_TAIL:]
+    return found

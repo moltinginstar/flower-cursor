@@ -30,30 +30,30 @@ HANDOVER_DELAY = 0.15
 
 
 class NativeCursorPolicy:
-    """Whether the application under us has taken the caret over."""
+  """Whether the application under us has taken the caret over."""
 
-    def __init__(self, delay: float = HANDOVER_DELAY) -> None:
-        self._delay = delay
-        self._hidden_since: float | None = None
-        self.child_draws_caret = False
+  def __init__(self, delay: float = HANDOVER_DELAY) -> None:
+    self._delay = delay
+    self._hidden_since: float | None = None
+    self.child_draws_caret = False
 
-    def child_set(self, visible: bool, now: float) -> bool:
-        """Record a DECTCEM request from the child; True if ownership changed."""
-        if not visible:
-            if self._hidden_since is None:
-                self._hidden_since = now
-            return False
-        self._hidden_since = None
-        if not self.child_draws_caret:
-            return False
-        self.child_draws_caret = False
-        return True
+  def child_set(self, visible: bool, now: float) -> bool:
+    """Record a DECTCEM request from the child; True if ownership changed."""
+    if not visible:
+      if self._hidden_since is None:
+        self._hidden_since = now
+      return False
+    self._hidden_since = None
+    if not self.child_draws_caret:
+      return False
+    self.child_draws_caret = False
+    return True
 
-    def poll(self, now: float) -> bool:
-        """Let a long enough hide take the caret over; True if it just did."""
-        if self.child_draws_caret or self._hidden_since is None:
-            return False
-        if now - self._hidden_since < self._delay:
-            return False
-        self.child_draws_caret = True
-        return True
+  def poll(self, now: float) -> bool:
+    """Let a long enough hide take the caret over; True if it just did."""
+    if self.child_draws_caret or self._hidden_since is None:
+      return False
+    if now - self._hidden_since < self._delay:
+      return False
+    self.child_draws_caret = True
+    return True

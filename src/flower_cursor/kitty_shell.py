@@ -30,76 +30,76 @@ _OUR_NAMES = frozenset({"flower-cursor", "flower-cursor-shell"})
 
 
 def user_shell(environ: Mapping[str, str] | None = None) -> str:
-    """Resolve the user's login shell the way `kitty/constants.py` does."""
-    environ = os.environ if environ is None else environ
-    shell = environ.get("SHELL") or ""
-    if shell and Path(shell).name not in _OUR_NAMES:
-        return shell
-    try:
-        import pwd
+  """Resolve the user's login shell the way `kitty/constants.py` does."""
+  environ = os.environ if environ is None else environ
+  shell = environ.get("SHELL") or ""
+  if shell and Path(shell).name not in _OUR_NAMES:
+    return shell
+  try:
+    import pwd
 
-        return pwd.getpwuid(os.geteuid()).pw_shell or "/bin/sh"
-    except Exception:
-        return "/bin/sh"
+    return pwd.getpwuid(os.geteuid()).pw_shell or "/bin/sh"
+  except Exception:
+    return "/bin/sh"
 
 
 def kitten_executable(environ: Mapping[str, str] | None = None) -> str | None:
-    """Find the `kitten` binary that belongs to the running Kitty.
+  """Find the `kitten` binary that belongs to the running Kitty.
 
-    Kitty computes it as `dirname(kitty_exe())/kitten`. The wrapper is spawned
-    with the login environment, whose PATH need not contain it, so the install
-    directory Kitty exports is the reliable route.
-    """
-    environ = os.environ if environ is None else environ
-    installation = environ.get("KITTY_INSTALLATION_DIR")
-    if installation:
-        root = Path(installation)
-        candidates = (
-            # macOS: .../kitty.app/Contents/Resources/kitty -> .../MacOS/kitten
-            root.parent.parent / "MacOS" / "kitten",
-            # Linux: <prefix>/lib/kitty -> <prefix>/bin/kitten
-            root.parent.parent / "bin" / "kitten",
-            root.parent / "bin" / "kitten",
-            root / "kitten",
-        )
-        for candidate in candidates:
-            if os.access(candidate, os.X_OK) and candidate.is_file():
-                return str(candidate)
-    found = shutil.which("kitten", path=environ.get("PATH"))
-    return found
+  Kitty computes it as `dirname(kitty_exe())/kitten`. The wrapper is spawned
+  with the login environment, whose PATH need not contain it, so the install
+  directory Kitty exports is the reliable route.
+  """
+  environ = os.environ if environ is None else environ
+  installation = environ.get("KITTY_INSTALLATION_DIR")
+  if installation:
+    root = Path(installation)
+    candidates = (
+      # macOS: .../kitty.app/Contents/Resources/kitty -> .../MacOS/kitten
+      root.parent.parent / "MacOS" / "kitten",
+      # Linux: <prefix>/lib/kitty -> <prefix>/bin/kitten
+      root.parent.parent / "bin" / "kitten",
+      root.parent / "bin" / "kitten",
+      root / "kitten",
+    )
+    for candidate in candidates:
+      if os.access(candidate, os.X_OK) and candidate.is_file():
+        return str(candidate)
+  found = shutil.which("kitten", path=environ.get("PATH"))
+  return found
 
 
 def shell_command(environ: Mapping[str, str] | None = None) -> list[str]:
-    """Build the command that starts the user's shell with integration.
+  """Build the command that starts the user's shell with integration.
 
-    Without a kitten to nest - a non-Kitty terminal, or a Kitty whose install
-    we cannot locate - the shell is started directly in login/interactive mode.
-    It loses integration, but it is still the user's shell.
-    """
-    environ = os.environ if environ is None else environ
-    shell = user_shell(environ)
-    kitten = kitten_executable(environ)
-    if kitten is None:
-        return [shell, "-l", "-i"]
-    # `--shell .` would ask the kitten to guess, and its guess walks up to the
-    # `shell` option in kitty.conf - which is this wrapper. Naming the shell
-    # outright is what keeps that from recursing.
-    return [kitten, "run-shell", "--shell", shell]
+  Without a kitten to nest - a non-Kitty terminal, or a Kitty whose install
+  we cannot locate - the shell is started directly in login/interactive mode.
+  It loses integration, but it is still the user's shell.
+  """
+  environ = os.environ if environ is None else environ
+  shell = user_shell(environ)
+  kitten = kitten_executable(environ)
+  if kitten is None:
+    return [shell, "-l", "-i"]
+  # `--shell .` would ask the kitten to guess, and its guess walks up to the
+  # `shell` option in kitty.conf - which is this wrapper. Naming the shell
+  # outright is what keeps that from recursing.
+  return [kitten, "run-shell", "--shell", shell]
 
 
 def exec_fallback(command: list[str]) -> None:
-    """Replace this process with *command*, as a last resort before dying.
+  """Replace this process with *command*, as a last resort before dying.
 
-    Installed as Kitty's `shell`, this wrapper stands between the user and
-    every new window. Whatever goes wrong here, the window must still come up
-    with a usable shell in it.
-    """
+  Installed as Kitty's `shell`, this wrapper stands between the user and
+  every new window. Whatever goes wrong here, the window must still come up
+  with a usable shell in it.
+  """
+  try:
+    os.execvp(command[0], command)
+  except OSError:
+    shell = user_shell()
     try:
-        os.execvp(command[0], command)
+      os.execvp(shell, [shell, "-l", "-i"])
     except OSError:
-        shell = user_shell()
-        try:
-            os.execvp(shell, [shell, "-l", "-i"])
-        except OSError:
-            print(f"flower-cursor: cannot start a shell ({shell})", file=sys.stderr)
-            os._exit(127)
+      print(f"flower-cursor: cannot start a shell ({shell})", file=sys.stderr)
+      os._exit(127)

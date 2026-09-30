@@ -20,32 +20,32 @@ _MAX_PAYLOAD = 1 << 28
 
 
 class WireError(ConnectionError):
-    """The other end went away, or sent something that is not a message."""
+  """The other end went away, or sent something that is not a message."""
 
 
 def send(connection: socket.socket, header: dict, payload: bytes = b"") -> None:
-    encoded = json.dumps(header, separators=(",", ":")).encode()
-    connection.sendall(_LENGTHS.pack(len(encoded), len(payload)) + encoded + payload)
+  encoded = json.dumps(header, separators=(",", ":")).encode()
+  connection.sendall(_LENGTHS.pack(len(encoded), len(payload)) + encoded + payload)
 
 
 def receive(connection: socket.socket) -> tuple[dict, bytes]:
-    header_length, payload_length = _LENGTHS.unpack(_exactly(connection, _LENGTHS.size))
-    if header_length > _MAX_HEADER or payload_length > _MAX_PAYLOAD:
-        raise WireError("message too large")
-    try:
-        header = json.loads(_exactly(connection, header_length))
-    except ValueError as error:
-        raise WireError(f"unreadable header ({error})") from None
-    if not isinstance(header, dict):
-        raise WireError("header is not an object")
-    return header, _exactly(connection, payload_length)
+  header_length, payload_length = _LENGTHS.unpack(_exactly(connection, _LENGTHS.size))
+  if header_length > _MAX_HEADER or payload_length > _MAX_PAYLOAD:
+    raise WireError("message too large")
+  try:
+    header = json.loads(_exactly(connection, header_length))
+  except ValueError as error:
+    raise WireError(f"unreadable header ({error})") from None
+  if not isinstance(header, dict):
+    raise WireError("header is not an object")
+  return header, _exactly(connection, payload_length)
 
 
 def _exactly(connection: socket.socket, length: int) -> bytes:
-    buffer = bytearray()
-    while len(buffer) < length:
-        chunk = connection.recv(min(length - len(buffer), 1 << 20))
-        if not chunk:
-            raise WireError("connection closed")
-        buffer.extend(chunk)
-    return bytes(buffer)
+  buffer = bytearray()
+  while len(buffer) < length:
+    chunk = connection.recv(min(length - len(buffer), 1 << 20))
+    if not chunk:
+      raise WireError("connection closed")
+    buffer.extend(chunk)
+  return bytes(buffer)

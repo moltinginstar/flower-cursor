@@ -26,44 +26,44 @@ _MAX_PENDING = 4096
 
 
 class CwdFollower:
-    """Report the directory the child last announced with OSC 7."""
+  """Report the directory the child last announced with OSC 7."""
 
-    def __init__(self) -> None:
-        self._tail = b""
-        self._current: str | None = None
+  def __init__(self) -> None:
+    self._tail = b""
+    self._current: str | None = None
 
-    def feed(self, data: bytes) -> str | None:
-        """Return the newly reported directory, or None if it is unchanged."""
-        combined = self._tail + data
-        path: str | None = None
-        for match in _OSC7.finditer(combined):
-            path = _path_from_url(match.group(1)) or path
-        self._tail = combined[-_MAX_PENDING:]
-        if path is None or path == self._current:
-            return None
-        self._current = path
-        return path
+  def feed(self, data: bytes) -> str | None:
+    """Return the newly reported directory, or None if it is unchanged."""
+    combined = self._tail + data
+    path: str | None = None
+    for match in _OSC7.finditer(combined):
+      path = _path_from_url(match.group(1)) or path
+    self._tail = combined[-_MAX_PENDING:]
+    if path is None or path == self._current:
+      return None
+    self._current = path
+    return path
 
 
 def _path_from_url(raw: bytes) -> str | None:
-    try:
-        url = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-    parts = urlsplit(url)
-    if parts.scheme and parts.scheme != "file":
-        return None
-    # A hostname that is not ours means the shell is somewhere else entirely -
-    # over ssh, say - and its path is meaningless here. Kitty makes the same
-    # distinction with `child_is_remote`.
-    if parts.hostname and not _is_local(parts.hostname):
-        return None
-    return unquote(parts.path) or None
+  try:
+    url = raw.decode("utf-8")
+  except UnicodeDecodeError:
+    return None
+  parts = urlsplit(url)
+  if parts.scheme and parts.scheme != "file":
+    return None
+  # A hostname that is not ours means the shell is somewhere else entirely -
+  # over ssh, say - and its path is meaningless here. Kitty makes the same
+  # distinction with `child_is_remote`.
+  if parts.hostname and not _is_local(parts.hostname):
+    return None
+  return unquote(parts.path) or None
 
 
 def _is_local(hostname: str) -> bool:
-    import socket
+  import socket
 
-    if hostname in {"localhost", "127.0.0.1", "::1"}:
-        return True
-    return hostname.split(".")[0].lower() == socket.gethostname().split(".")[0].lower()
+  if hostname in {"localhost", "127.0.0.1", "::1"}:
+    return True
+  return hostname.split(".")[0].lower() == socket.gethostname().split(".")[0].lower()
