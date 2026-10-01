@@ -10,8 +10,7 @@ silent while it sits there with its wings tucked.
 Sound is off unless asked for, and the audio backend is an optional extra, so
 everything here has to be missing-able. `BeeBuzz.start` returns whether the
 backend is there; every other method is a no-op when it is not, or when the
-device it opens later refuses. Nothing in this module
-writes to stdout; that file descriptor is the terminal transport.
+device it opens later refuses. Nothing in this module writes to stdout; that file descriptor is the terminal transport.
 """
 
 from __future__ import annotations

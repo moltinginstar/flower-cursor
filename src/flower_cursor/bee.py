@@ -1,4 +1,4 @@
-"""One bounded screen-space idle visitor, with no terminal or caret ownership."""
+"""The bee that visits a flower left alone."""
 
 from __future__ import annotations
 
@@ -15,11 +15,9 @@ from .lifecycle import CursorCell
 APPROACH_TIME = 3.8
 REST_TIME = 6.0
 DEPARTURE_TIME = 1.8
-# How long the caret stays still before a visit, on average. One number rather
-# than an idle threshold plus a cooldown: both answered the same question
-# (when may a bee appear), and a single wait that restarts whenever the caret
-# moves or the bee leaves says it once. The clock runs only while nothing
-# moves, so a bee means the screen was actually left alone.
+# How long the caret stays still before a visit, on average. The wait restarts
+# whenever the caret moves or the bee leaves, and the clock runs only while
+# nothing moves.
 DEFAULT_INTERVAL = 90.0
 # Drawn fresh for every wait, because a visitor that arrives on the same
 # schedule every time reads as a timer rather than as something alive.

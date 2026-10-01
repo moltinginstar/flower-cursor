@@ -1,13 +1,10 @@
 """Decide who owns the caret: this flower, or an application drawing its own.
 
-Kitty's native cursor stays hidden while flower mode runs, because the stalk is
+Kitty's native cursor stays hidden while the flower is drawn, because the stalk is
 the caret. That only holds while the application under us agrees there should
 be one caret at that cell. A full-screen program that paints its own cursor
-(a coding agent's input box, a pager's position bar) first hides the terminal's
+(a TUI's input box, a pager's position bar) first hides the terminal's
 with DECTCEM (`CSI ? 25 l`), because otherwise every terminal would show two.
-That request is the general signal, and the only one: it is what the
-application tells every terminal, not something learned about a particular
-program.
 
 So the mode is treated the way mode 1004 already is in `pty_runner`: the child
 owns it for itself, we record what it asked for and re-assert our own hide, and

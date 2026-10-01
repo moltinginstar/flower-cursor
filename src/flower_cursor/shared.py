@@ -1,13 +1,13 @@
 """The wrapper's side of the shared renderer: find it, start it, talk to it.
 
-Every wrapped window used to import Pillow, decode its species' artwork and
-open its own audio device. One per-user process, `daemon`, now does that for
-all of them, and a wrapper sends it the cursor and gets graphics bytes back.
+One per-user process, `daemon`, holds Pillow, the decoded artwork and the audio
+device for every wrapped window. A wrapper sends it the cursor and gets graphics
+bytes back.
 See `docs/shared-renderer.md` for the split and why.
 
 Nothing here may cost a window its flower. A renderer that cannot be started,
 refuses the window, or goes away mid-session leaves the window drawing in its
-own process exactly as it did before the renderer existed.
+own process.
 """
 
 from __future__ import annotations

@@ -6,9 +6,8 @@ that point at them) and says what it found. A window that stays flowerless
 usually has exactly one of these wrong, and reading it off a list beats
 guessing at it from an empty screen.
 
-What this deliberately does not do is claim the flowers will appear. Drawing
-them needs Kitty's graphics protocol over a real terminal, which a report run
-into a pipe cannot exercise, so nothing below is evidence about that.
+It can't tell you the flowers will appear: that needs Kitty's graphics protocol
+over a real terminal, which a report run into a pipe can't exercise.
 """
 
 from __future__ import annotations

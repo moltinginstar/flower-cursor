@@ -1,4 +1,4 @@
-"""Shared native-pixel geometry for flowers and independent viewport visitors."""
+"""Where flowers and the bee sit on screen, in native pixels."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Serialize child terminal output with cursor-renderer protocol writes."""
+"""Interleave the child's output with the flower's graphics without breaking either."""
 
 from __future__ import annotations
 

@@ -1,8 +1,7 @@
 """The visual a renderer draws, and how fast the animation runs.
 
-What is left here after the flat-atlas runtime was retired: the dataclass every
-compositor and renderer passes around, and the speed the layered runtime plays
-its poses at.
+The dataclass every compositor and renderer passes around, and the speed the
+layered runtime plays its poses at.
 """
 
 from __future__ import annotations

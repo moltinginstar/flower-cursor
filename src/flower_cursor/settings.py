@@ -2,9 +2,9 @@
 
 Every setting is declared once, in `SETTINGS`, and that single declaration is
 what builds the command-line flag, the environment variable, the `--help`
-line and the `--check` report. Kitty's `shell` option passes no arguments, so
-a setting that exists only as a flag cannot be reached from a Kitty config at
-all; declaring the two spellings separately is how they drift apart.
+line and the `--check` report. The launcher hands its arguments to the shell,
+so a setting that existed only as a flag couldn't be set from `kitty.conf`, and
+declaring the two spellings separately is how they drift apart.
 
 Both the wrapper and `--check` need this: one to grow the flower, the other to
 say what would grow. Keeping it here is what lets the report describe an

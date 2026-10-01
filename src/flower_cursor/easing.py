@@ -1,9 +1,6 @@
 """Clamping, easing and argument checks shared by every animated model.
 
-These are small enough to retype and were, repeatedly: the same smoothstep and
-the same 0-to-1 clamp appeared in the flower lifecycle, the stalk, the petals,
-the bee and the audio, and a constant tweaked in one of them changed only that
-copy. They live here rather than in `lifecycle` so the bee and the buzz can use
+They live here rather than in `lifecycle` so the bee and the buzz can use
 them without importing the flower.
 """
 

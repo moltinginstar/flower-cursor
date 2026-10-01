@@ -1,4 +1,4 @@
-"""Experimental shedding state for the Blender exit/recovery study."""
+"""How a withering flower drops its petals, and how they fall."""
 
 from __future__ import annotations
 
@@ -60,8 +60,7 @@ class SheddingFlower:
     self._wall_time_idle = wall_time_idle
     self._idle_time = 0.0
     self.shedding_order = shedding_order
-    # Density-aware staggering keeps dense blooms inside the existing exit window;
-    # the lifecycle and stalk timing remain unchanged.
+    # Dense blooms shed faster, so every petal still falls within the same exit window.
     self._detach_interval = 0.05 if group_count <= 18 else 0.85 / (group_count - 1)
     self.petals = tuple(Spring(1.0, response=9.0) for _ in range(group_count))
     self.flights: list[PetalFlight] = []

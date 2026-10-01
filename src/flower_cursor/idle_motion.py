@@ -1,4 +1,4 @@
-"""Experimental wall-time idle motion shared by authored study poses."""
+"""The sway a grown flower keeps up while the caret is still."""
 
 from __future__ import annotations
 

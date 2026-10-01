@@ -20,12 +20,9 @@ passwd_shell() {
   fi
 }
 
-# The basename of $SHELL, or the empty string when SHELL is unset. It is
-# ${SHELL-} and not $SHELL because a bare ${SHELL##*/} is a fatal "parameter
-# not set" under `set -u` in exactly the unset case the callers must answer:
-# the window would die instead of falling back to a plain shell. The
-# `env read_from_shell` branch below inlines these two lines rather than
-# calling this, to stay free of forks on Kitty's 1.5 s budget.
+# The basename of $SHELL, or the empty string when SHELL is unset (`${SHELL-}`
+# keeps `set -u` from killing the window). The `read_from_shell` branch below
+# inlines this to avoid a fork.
 shell_name() {
   name=${SHELL-}
   echo "${name##*/}"
@@ -60,9 +57,7 @@ kitten_exe() {
 }
 
 # Hand the window straight to the shell, integration and all: the recovery
-# path for a checkout too broken to grow anything. Turning the flower off is
-# Kitty's own job (`kitty --override shell=$SHELL`, or `kitty @ launch` with
-# a shell of your own), so there is no second off switch to keep in step.
+# path for a checkout too broken to grow anything.
 plain_shell() {
   shell=$(real_shell)
   kitten=$(kitten_exe)
@@ -81,9 +76,7 @@ plain_shell() {
 # framework in it can take most of that on a cold start, so this branch comes
 # before any other work in the script and forks nothing on the way.
 if [ "$#" -gt 0 ]; then
-  # Deliberately not `real_shell`: this branch is on Kitty's 1.5 s budget for
-  # `env read_from_shell`, and a passwd lookup forks. $SHELL is set for all
-  # but the pathological case this guards against.
+  # Not `real_shell`, because a passwd lookup forks.
   name=${SHELL-}
   case "${name##*/}" in
     '' | flower-cursor | flower-cursor-shell) exec /bin/sh "$@" ;;

@@ -120,7 +120,7 @@ class PoseLibrary:
     return tuple(weights.items())
 
   def sample_animated(self, pose: FlowerPose) -> tuple[tuple[PoseAsset, float], ...]:
-    """Blend into a phase-linear idle ring as the biological state settles."""
+    """Blend into the looping idle poses as the flower finishes growing."""
     progress = clamp01((min(pose.stem, pose.bloom, pose.vitality) - 0.95) / 0.045)
     if progress == 0 or len(self._idle_assets) < 2:
       return self._entry_sample(pose)

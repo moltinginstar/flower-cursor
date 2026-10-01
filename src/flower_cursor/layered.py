@@ -1,4 +1,4 @@
-"""Interactive shedding using independently authored botanical layers."""
+"""A flower built from separately rendered Blender layers, petal by petal."""
 
 from __future__ import annotations
 

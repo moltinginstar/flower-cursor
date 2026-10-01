@@ -2,7 +2,7 @@
 
 One `LayeredRuntime` drives one caret, so a window showing several cursors
 needs several of them. They are kept here rather than inside `LayeredRuntime`
-so the single-cursor path stays exactly what it was.
+so the single-cursor path doesn't have to know about them.
 
 Beyond `independent_limit` simultaneous cursors the per-cursor runtimes are
 dropped and the primary flower is stamped at every cursor instead: identical
