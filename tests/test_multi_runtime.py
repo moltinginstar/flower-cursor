@@ -9,7 +9,7 @@ from flower_cursor.lifecycle import CursorCell
 from flower_cursor.multi_runtime import MultiCursorFlowers
 from flower_cursor.runtime import FlowerVisual
 
-MANIFEST = Path("src/flower_cursor/assets/layered/manifest.json")
+MANIFEST = Path("src/flower_cursor/assets/anemone/manifest.json")
 
 
 def cells(count: int) -> tuple[CursorCell, ...]:

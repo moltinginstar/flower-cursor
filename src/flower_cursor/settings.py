@@ -24,7 +24,8 @@ from typing import Any
 from .bee import DEFAULT_INTERVAL
 
 DEFAULT_SPECIES = "anemone"
-DEFAULT_MANIFEST = Path(__file__).with_name("assets") / "layered" / "manifest.json"
+_ASSETS = Path(__file__).with_name("assets")
+DEFAULT_MANIFEST = _ASSETS / DEFAULT_SPECIES / "manifest.json"
 # One word turns off everything that can be turned off (the bee, the buzz,
 # the log), so there is a single thing to learn and a single thing to document.
 # Anything else is a value, so a variable left over from some other tool cannot
@@ -47,17 +48,9 @@ class FlowerSpec:
   manifest: Path
 
 
-# Name and description; the assets live in a directory named after the species
-# beside the default one, so the manifest path is derived rather than spelled
-# out per flower. The default is the exception: it was the only flower before
-# there were species, and its directory keeps the name it was authored under.
-_ASSETS = DEFAULT_MANIFEST.parent.parent
+# Name and description; each species' assets live in a directory named after it.
 FLOWER_CATALOG = tuple(
-  FlowerSpec(
-    name,
-    description,
-    DEFAULT_MANIFEST if name == DEFAULT_SPECIES else _ASSETS / name / "manifest.json",
-  )
+  FlowerSpec(name, description, _ASSETS / name / "manifest.json")
   for name, description in (
     ("anemone", "Pink Japanese anemone"),
     ("cornflower", "Blue cornflower"),

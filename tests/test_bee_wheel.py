@@ -28,7 +28,7 @@ def test_wheel_contains_identical_artwork_and_runs_outside_checkout(tmp_path):
       for name in archive.namelist()
       if name.startswith("flower_cursor/assets/bee/") and name.endswith(".png")
     } == frames
-    for kind in ("bee", "layered"):
+    for kind in ("bee", "anemone"):
       source = root / "src/flower_cursor/assets" / kind
       for path in source.iterdir():
         if path.is_file():

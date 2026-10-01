@@ -11,7 +11,7 @@ from flower_cursor.layered import BeeVisual, LayeredCompositor, LayeredRuntime
 from flower_cursor.lifecycle import CursorCell
 from flower_cursor.multi_runtime import MultiCursorFlowers
 
-MANIFEST = Path("src/flower_cursor/assets/layered/manifest.json")
+MANIFEST = Path("src/flower_cursor/assets/anemone/manifest.json")
 A = CursorCell(4, 8)
 # Longer than the wither takes, so "still there" and "gone" are both decided.
 GONE = 1.5
