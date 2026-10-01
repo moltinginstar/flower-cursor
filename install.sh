@@ -14,7 +14,7 @@ uninstall=0
 dry_run=0
 
 usage() {
-    cat << 'USAGE'
+  cat << 'USAGE'
 Usage: install.sh [options]
 
   --species NAME   grow NAME instead of the default flower (or cycle/random)
@@ -26,15 +26,41 @@ USAGE
 }
 
 while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --species) species="${2-}"; [ -n "$species" ] || { echo "install.sh: --species needs a name" >&2; exit 2; }; shift 2 ;;
-        --species=*) species="${1#--species=}"; shift ;;
-        --configure) configure=1; shift ;;
-        --uninstall) uninstall=1; shift ;;
-        --dry-run) dry_run=1; shift ;;
-        -h|--help) usage; exit 0 ;;
-        *) echo "install.sh: unknown option $1" >&2; usage >&2; exit 2 ;;
-    esac
+  case "$1" in
+    --species)
+      species="${2-}"
+      [ -n "$species" ] || {
+        echo "install.sh: --species needs a name" >&2
+        exit 2
+      }
+      shift 2
+      ;;
+    --species=*)
+      species="${1#--species=}"
+      shift
+      ;;
+    --configure)
+      configure=1
+      shift
+      ;;
+    --uninstall)
+      uninstall=1
+      shift
+      ;;
+    --dry-run)
+      dry_run=1
+      shift
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "install.sh: unknown option $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
 done
 
 have() { command -v "$1" > /dev/null 2>&1; }
@@ -42,10 +68,10 @@ have() { command -v "$1" > /dev/null 2>&1; }
 # Everything here is a line of text; the only thing that ever writes it out is
 # `apply`, so --dry-run has one place to stop rather than a flag in every step.
 block() {
-    echo "$BEGIN"
-    echo "shell $DIR/kitty/flower-cursor-shell"
-    [ -n "$species" ] && echo "env FLOWER_CURSOR_SPECIES=$species"
-    echo "$END"
+  echo "$BEGIN"
+  echo "shell $DIR/kitty/flower-cursor-shell"
+  [ -n "$species" ] && echo "env FLOWER_CURSOR_SPECIES=$species"
+  echo "$END"
 }
 
 # Drop the flower-cursor block and keep every other line. A block is only a block once
@@ -54,8 +80,8 @@ block() {
 # --uninstall or a second --configure would silently delete the whole remainder
 # of the user's kitty.conf.
 without_block() {
-    [ -f "$KITTY_CONFIG" ] || return 0
-    awk -v b="$BEGIN" -v e="$END" '
+  [ -f "$KITTY_CONFIG" ] || return 0
+  awk -v b="$BEGIN" -v e="$END" '
         skip == 1 {
             held = held $0 "\n"
             if ($0 == e) { skip = 0; held = "" }
@@ -74,31 +100,31 @@ without_block() {
 }
 
 apply() {
-    if [ "$dry_run" -eq 1 ]; then
-        echo "Would write to $KITTY_CONFIG:"
-        echo
-        cat
-        return 0
-    fi
-    mkdir -p "$(dirname "$KITTY_CONFIG")"
-    if [ -f "$KITTY_CONFIG" ]; then
-        # Two runs in the same second must not leave one backup: the first one
-        # is the config as the user wrote it, and that is the one worth having.
-        backup="$KITTY_CONFIG.backup-$(date +%Y%m%d%H%M%S)"
-        attempt=1
-        while [ -e "$backup" ]; do
-            backup="$KITTY_CONFIG.backup-$(date +%Y%m%d%H%M%S)-$attempt"
-            attempt=$((attempt + 1))
-        done
-        cp "$KITTY_CONFIG" "$backup"
-        echo "Backed up your old config to $backup."
-    fi
-    cat > "$KITTY_CONFIG.flower-cursor.tmp"
-    mv "$KITTY_CONFIG.flower-cursor.tmp" "$KITTY_CONFIG"
+  if [ "$dry_run" -eq 1 ]; then
+    echo "Would write to $KITTY_CONFIG:"
+    echo
+    cat
+    return 0
+  fi
+  mkdir -p "$(dirname "$KITTY_CONFIG")"
+  if [ -f "$KITTY_CONFIG" ]; then
+    # Two runs in the same second must not leave one backup: the first one
+    # is the config as the user wrote it, and that is the one worth having.
+    backup="$KITTY_CONFIG.backup-$(date +%Y%m%d%H%M%S)"
+    attempt=1
+    while [ -e "$backup" ]; do
+      backup="$KITTY_CONFIG.backup-$(date +%Y%m%d%H%M%S)-$attempt"
+      attempt=$((attempt + 1))
+    done
+    cp "$KITTY_CONFIG" "$backup"
+    echo "Backed up your old config to $backup."
+  fi
+  cat > "$KITTY_CONFIG.flower-cursor.tmp"
+  mv "$KITTY_CONFIG.flower-cursor.tmp" "$KITTY_CONFIG"
 }
 
 restart_notice() {
-    cat << 'NOTICE'
+  cat << 'NOTICE'
 
 Kitty reads its config when it starts, so restart Kitty (or reload the config
 with ctrl+cmd+, on macOS, ctrl+shift+f5 elsewhere) to see the change. Windows
@@ -107,19 +133,22 @@ NOTICE
 }
 
 if [ "$uninstall" -eq 1 ]; then
-    if ! grep -qxF "$BEGIN" "$KITTY_CONFIG" 2> /dev/null; then
-        echo "Nothing to remove: $KITTY_CONFIG has no flower-cursor settings in it."
-        exit 0
-    fi
-    without_block | apply
-    [ "$dry_run" -eq 1 ] || echo "Removed the flower-cursor settings from $KITTY_CONFIG."
-    [ -d "$DIR" ] && echo "The files are still in $DIR; delete that directory to finish up."
-    restart_notice
+  if ! grep -qxF "$BEGIN" "$KITTY_CONFIG" 2> /dev/null; then
+    echo "Nothing to remove: $KITTY_CONFIG has no flower-cursor settings in it."
     exit 0
+  fi
+  without_block | apply
+  [ "$dry_run" -eq 1 ] || echo "Removed the flower-cursor settings from $KITTY_CONFIG."
+  [ -d "$DIR" ] && echo "The files are still in $DIR; delete that directory to finish up."
+  restart_notice
+  exit 0
 fi
 
 have kitty || echo "install.sh: warning: no kitty on your PATH; this only does anything in Kitty." >&2
-have uv || { echo "install.sh: uv is required: https://docs.astral.sh/uv/getting-started/installation/" >&2; exit 1; }
+have uv || {
+  echo "install.sh: uv is required: https://docs.astral.sh/uv/getting-started/installation/" >&2
+  exit 1
+}
 
 # Run from a checkout, install that checkout. Run from a pipe, fetch one.
 # `sh install.sh` from inside the checkout leaves no slash in $0, so "." is a
@@ -128,37 +157,43 @@ have uv || { echo "install.sh: uv is required: https://docs.astral.sh/uv/getting
 is_checkout() { [ -f "$1/pyproject.toml" ] && [ -f "$1/kitty/flower-cursor-shell" ]; }
 here=""
 case "${0-}" in
-    */*) candidate="${0%/*}" ;;
-    *) candidate="." ;;
+  */*) candidate="${0%/*}" ;;
+  *) candidate="." ;;
 esac
 is_checkout "$candidate" && here="$(CDPATH= cd -- "$candidate" && pwd)"
 if [ -n "$here" ]; then
-    DIR="$here"
-    echo "Installing from $DIR."
+  DIR="$here"
+  echo "Installing from $DIR."
 elif [ -d "$DIR/.git" ]; then
-    echo "Updating $DIR."
-    [ "$dry_run" -eq 1 ] || git -C "$DIR" pull --ff-only
+  echo "Updating $DIR."
+  [ "$dry_run" -eq 1 ] || git -C "$DIR" pull --ff-only
 else
-    have git || { echo "install.sh: git is required to fetch $REPO" >&2; exit 1; }
-    echo "Cloning $REPO into $DIR."
-    [ "$dry_run" -eq 1 ] || git clone --depth 1 "$REPO" "$DIR"
+  have git || {
+    echo "install.sh: git is required to fetch $REPO" >&2
+    exit 1
+  }
+  echo "Cloning $REPO into $DIR."
+  [ "$dry_run" -eq 1 ] || git clone --depth 1 "$REPO" "$DIR"
 fi
 
 if [ "$dry_run" -eq 1 ]; then
-    echo "Would run: uv sync --directory $DIR --no-dev --inexact"
+  echo "Would run: uv sync --directory $DIR --no-dev --inexact"
 else
-    uv sync --directory "$DIR" --no-dev --inexact
+  uv sync --directory "$DIR" --no-dev --inexact
 fi
 
 if [ "$configure" -eq 1 ]; then
-    if without_block | grep -qE '^shell[[:space:]]'; then
-        echo "install.sh: warning: $KITTY_CONFIG already sets a shell; the flower cursor" >&2
-        echo "  goes last and wins. Remove the other line if that is not what you want." >&2
-    fi
-    { without_block; block; } | apply
-    [ "$dry_run" -eq 1 ] || echo "Wrote the flower-cursor settings to $KITTY_CONFIG."
+  if without_block | grep -qE '^shell[[:space:]]'; then
+    echo "install.sh: warning: $KITTY_CONFIG already sets a shell; the flower cursor" >&2
+    echo "  goes last and wins. Remove the other line if that is not what you want." >&2
+  fi
+  {
+    without_block
+    block
+  } | apply
+  [ "$dry_run" -eq 1 ] || echo "Wrote the flower-cursor settings to $KITTY_CONFIG."
 else
-    cat << CONFIG
+  cat << CONFIG
 
 Add this to $KITTY_CONFIG:
 
