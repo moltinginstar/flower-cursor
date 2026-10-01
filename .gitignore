@@ -17,3 +17,10 @@ blender/.cache/
 
 # Local Kitty experiments
 kitty/local.conf
+
+# Local notes and agent instructions
+SPEC.md
+ROADMAP.md
+AGENTS.local.md
+CLAUDE.local.md
+.claude/
