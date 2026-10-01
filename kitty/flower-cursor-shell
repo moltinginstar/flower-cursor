@@ -88,6 +88,14 @@ if [ "$#" -gt 0 ]; then
     esac
 fi
 
+# Kitty titles a window after the program it started until that program says
+# otherwise, which here would be this wrapper. Say what Kitty would have said
+# had it started the shell itself, and leave the rest to the shell.
+if [ -t 1 ]; then
+    shell=$(real_shell)
+    printf '\033]2;%s\007' "${shell##*/}"
+fi
+
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 # Every setting the wrapper takes is also a variable, so this passes none of
