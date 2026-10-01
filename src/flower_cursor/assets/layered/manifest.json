@@ -1,4 +1,45 @@
 {
+  "species": "anemone",
+  "shedding_groups": [
+    {
+      "id": "petal_0",
+      "layer": "petal_0",
+      "order": 0
+    },
+    {
+      "id": "petal_1",
+      "layer": "petal_1",
+      "order": 1
+    },
+    {
+      "id": "petal_2",
+      "layer": "petal_2",
+      "order": 2
+    },
+    {
+      "id": "petal_3",
+      "layer": "petal_3",
+      "order": 3
+    },
+    {
+      "id": "petal_4",
+      "layer": "petal_4",
+      "order": 4
+    },
+    {
+      "id": "petal_5",
+      "layer": "petal_5",
+      "order": 5
+    }
+  ],
+  "shedding_order": [
+    1,
+    4,
+    0,
+    5,
+    2,
+    3
+  ],
   "poses": [
     {
       "name": "grow_00",

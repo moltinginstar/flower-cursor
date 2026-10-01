@@ -569,7 +569,7 @@ def test_exported_near_feet_contact_visible_bloom_at_actual_render_scale(viewpor
       )
       leg = insect.crop(region).getchannel("A").getextrema()[1] >= 16
       supported += pink and leg
-    assert supported >= 2, "near-side feet must touch the actual coral bloom"
+    assert supported >= 2, "near-side feet must touch the actual bloom"
     bounds = flower.getchannel("A").getbbox()
     assert bounds is not None
     flower_pixels = rgba_pixels(flower.crop(bounds))

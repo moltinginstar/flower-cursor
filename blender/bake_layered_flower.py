@@ -124,6 +124,9 @@ def main():
   merged = [rebaked.pop(pose["name"], pose) for pose in previous.get("poses", [])]
   merged += [record for record in records if record["name"] in rebaked]
   manifest = {
+    "species": "anemone",
+    "shedding_groups": [{"id": f"petal_{i}", "layer": f"petal_{i}", "order": i} for i in range(6)],
+    "shedding_order": [1, 4, 0, 5, 2, 3],
     "poses": merged,
     "root_anchor": [root.x, 1 - root.y],
     "projection_right": list(right),

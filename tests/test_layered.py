@@ -38,6 +38,7 @@ def manifest(tmp_path: Path) -> Path:
   path.write_text(
     json.dumps(
       {
+        "shedding_groups": [{"id": f"petal_{i}", "layer": f"petal_{i}", "order": i} for i in range(6)],
         "poses": [record],
         "root_anchor": [0.5, 0.44],
         "projection_right": [0.15, 0, 0],

@@ -85,7 +85,7 @@ def test_a_variable_sets_it_and_a_flag_beats_the_variable(name):
 @pytest.mark.parametrize(
   ("name", "text"),
   [
-    ("species", "coral"),
+    ("species", "rose"),
     ("species", "off"),
     ("bee", "soon"),
     ("bee", str(BEE_LIMIT + 1)),

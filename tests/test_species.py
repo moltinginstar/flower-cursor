@@ -15,17 +15,16 @@ from flower_cursor.observer import (
 )
 from flower_cursor.settings import resolve
 from flower_cursor.shedding import SheddingFlower
-from flower_cursor.species import LEGACY_CORAL_SHEDDING_ORDER, metadata_from_manifest
+from flower_cursor.species import load_species_metadata, metadata_from_manifest
 
 CORNFlower_ORDER = (1, 7, 3, 9, 5, 11, 0, 6, 2, 8, 4, 10, 12, 15, 13, 16, 14, 17)
 
 
-def test_legacy_manifest_metadata_preserves_coral_shedding_order() -> None:
-  metadata = metadata_from_manifest({})
+def test_the_default_anemone_sheds_six_petals_in_its_own_order() -> None:
+  metadata = load_species_metadata(DEFAULT_MANIFEST, selected_species=DEFAULT_SPECIES)
 
-  assert metadata.species_id == DEFAULT_SPECIES
   assert [group.layer for group in metadata.shedding_groups] == [f"petal_{i}" for i in range(6)]
-  assert metadata.shedding_order == LEGACY_CORAL_SHEDDING_ORDER
+  assert metadata.shedding_order == (1, 4, 0, 5, 2, 3)
   assert metadata.landing_support_bounds is None
 
 
@@ -57,6 +56,7 @@ def test_cornflower_metadata_accepts_eighteen_groups_and_support_bounds() -> Non
 @pytest.mark.parametrize(
   "manifest, message",
   [
+    ({}, "non-empty"),
     ({"shedding_groups": []}, "non-empty"),
     (
       {
@@ -80,7 +80,13 @@ def test_cornflower_metadata_accepts_eighteen_groups_and_support_bounds() -> Non
       },
       "permutation",
     ),
-    ({"landing_support_bounds": {"x": [-0.6, 0.1], "y": [0, 0]}}, "finite ordered"),
+    (
+      {
+        "shedding_groups": [{"id": "a", "layer": "petal_0", "order": 0}],
+        "landing_support_bounds": {"x": [-0.6, 0.1], "y": [0, 0]},
+      },
+      "finite ordered",
+    ),
   ],
 )
 def test_species_metadata_rejects_invalid_schema(manifest, message) -> None:
@@ -136,12 +142,12 @@ def test_flower_descriptions_are_user_facing_and_name_the_poppy_correctly() -> N
   assert all(description in help_text for description in FLOWER_DESCRIPTIONS.values())
 
 
-def test_the_cli_grows_each_public_flower_and_falls_back_from_coral(capsys) -> None:
+def test_the_cli_grows_each_public_flower_and_falls_back_from_unknown_names(capsys) -> None:
   assert [resolve({"species": name}, {}).species_name for name in PUBLIC_FLOWERS] == list(PUBLIC_FLOWERS)
-  # Coral was withdrawn, and a name nobody grows any more is a typo: one
-  # line on stderr rather than a window that refuses to open.
-  assert resolve({"species": "coral"}, {}).species_name == DEFAULT_SPECIES
-  assert "coral" in capsys.readouterr().err
+  # An unknown name is a typo: one line on stderr rather than a window that
+  # refuses to open.
+  assert resolve({"species": "rose"}, {}).species_name == DEFAULT_SPECIES
+  assert "rose" in capsys.readouterr().err
 
 
 def test_manifest_species_conflict_is_rejected() -> None:

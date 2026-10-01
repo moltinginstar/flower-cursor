@@ -10,19 +10,6 @@ from pathlib import Path
 from .manifest import manifest_data
 from .settings import DEFAULT_SPECIES
 
-# The default flower was authored before there were species, under the name
-# "coral" and with six petals shed in a hand-picked order. Its manifest,
-# assets/layered/manifest.json, still carries neither a `species` key nor
-# `shedding_groups`, so this order is what it resolves to; it is the default
-# anemone's actual behavior, not a compatibility shim for someone else's old
-# file. Deleting it changes what the default cursor does.
-#
-# The name, though, resolves to DEFAULT_SPECIES: that manifest is the anemone
-# the catalog offers, and naming it "coral" made the catalog's own default
-# unusable when passed explicitly: load_species_metadata(DEFAULT_MANIFEST,
-# selected_species="anemone") raised. "coral" is not an accepted alias.
-LEGACY_CORAL_SHEDDING_ORDER = (1, 4, 0, 5, 2, 3)
-
 
 class ManifestError(ValueError):
   """A manifest whose contents do not describe a species."""
@@ -55,28 +42,24 @@ def metadata_from_manifest(data: Mapping[str, object], *, selected_species: str 
     raise ManifestError(f"manifest species {species_id!r} does not match selected {selected_species!r}")
 
   raw_groups = data.get("shedding_groups")
-  if raw_groups is None:
-    groups = tuple(SheddingGroup(f"petal_{index}", f"petal_{index}", index) for index in range(6))
-    shedding_order = LEGACY_CORAL_SHEDDING_ORDER
+  if not isinstance(raw_groups, list) or not raw_groups:
+    raise ManifestError("manifest shedding_groups must be a non-empty list")
+  groups = tuple(_parse_group(item, index) for index, item in enumerate(raw_groups))
+  if len({group.identifier for group in groups}) != len(groups):
+    raise ManifestError("manifest shedding_groups ids must be unique")
+  if len({group.layer for group in groups}) != len(groups):
+    raise ManifestError("manifest shedding_groups layers must be unique")
+  raw_order = data.get("shedding_order")
+  if raw_order is None:
+    shedding_order = tuple(range(len(groups)))
   else:
-    if not isinstance(raw_groups, list) or not raw_groups:
-      raise ManifestError("manifest shedding_groups must be a non-empty list")
-    groups = tuple(_parse_group(item, index) for index, item in enumerate(raw_groups))
-    if len({group.identifier for group in groups}) != len(groups):
-      raise ManifestError("manifest shedding_groups ids must be unique")
-    if len({group.layer for group in groups}) != len(groups):
-      raise ManifestError("manifest shedding_groups layers must be unique")
-    raw_order = data.get("shedding_order")
-    if raw_order is None:
-      shedding_order = tuple(range(len(groups)))
-    else:
-      if not isinstance(raw_order, list):
-        raise ManifestError("manifest shedding_order must be a list")
-      if any(isinstance(value, bool) or not isinstance(value, int) for value in raw_order):
-        raise ManifestError("manifest shedding_order must contain integer indices")
-      shedding_order = tuple(raw_order)
-      if set(shedding_order) != set(range(len(groups))):
-        raise ManifestError("manifest shedding_order must be a permutation of shedding groups")
+    if not isinstance(raw_order, list):
+      raise ManifestError("manifest shedding_order must be a list")
+    if any(isinstance(value, bool) or not isinstance(value, int) for value in raw_order):
+      raise ManifestError("manifest shedding_order must contain integer indices")
+    shedding_order = tuple(raw_order)
+    if set(shedding_order) != set(range(len(groups))):
+      raise ManifestError("manifest shedding_order must be a permutation of shedding groups")
 
   return SpeciesMetadata(
     species_id=species_id,
