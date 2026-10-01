@@ -144,7 +144,7 @@ def scene():
   renderer = FlowerRenderer(runtime.pose_library, writes.append, compositor=compositor, canvas_scale=2)
   runtime.set_geometry(VIEWPORT, renderer.layout)
   runtime.move_to(A)
-  # The wait between visits is randomised; pin it so the seconds below are
+  # The wait between visits is randomized; pin it so the seconds below are
   # the visit's rather than the wait's.
   runtime.bee.interval = runtime.bee.wait = 10.0
   advance(runtime, 10)

@@ -2,7 +2,7 @@
 
 Image ids are a namespace shared with every other program drawing into the same
 window, and the protocol gives no way to ask which ids are free, so callers must
-choose one deliberately - there is no default. Placement ids need no such care:
+choose one deliberately; there is no default. Placement ids need no such care:
 the protocol identifies a placement by the (image id, placement id) pair.
 """
 

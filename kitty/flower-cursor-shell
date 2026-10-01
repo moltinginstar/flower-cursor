@@ -2,8 +2,8 @@
 # Kitty `shell` launcher: start the user's own shell under the flower cursor.
 #
 # Every new Kitty window runs this, so it fails open. If the wrapper cannot be
-# started for any reason - a missing interpreter, a half-finished checkout, a
-# broken install - the window still comes up with the user's real shell in it,
+# started for any reason (a missing interpreter, a half-finished checkout, a
+# broken install), the window still comes up with the user's real shell in it,
 # with Kitty's shell integration nested the same way the wrapper nests it.
 set -u
 
@@ -22,7 +22,7 @@ passwd_shell() {
 
 # The basename of $SHELL, or the empty string when SHELL is unset. It is
 # ${SHELL-} and not $SHELL because a bare ${SHELL##*/} is a fatal "parameter
-# not set" under `set -u` in exactly the unset case the callers must answer -
+# not set" under `set -u` in exactly the unset case the callers must answer:
 # the window would die instead of falling back to a plain shell. The
 # `env read_from_shell` branch below inlines these two lines rather than
 # calling this, to stay free of forks on Kitty's 1.5 s budget.
@@ -58,8 +58,8 @@ kitten_exe() {
 
 # Hand the window straight to the shell, integration and all: the recovery
 # path for a checkout too broken to grow anything. Turning the flower off is
-# Kitty's own job - `kitty --override shell=$SHELL`, or `kitty @ launch` with
-# a shell of your own - so there is no second off switch to keep in step.
+# Kitty's own job (`kitty --override shell=$SHELL`, or `kitty @ launch` with
+# a shell of your own), so there is no second off switch to keep in step.
 plain_shell() {
     shell=$(real_shell)
     kitten=$(kitten_exe)
@@ -70,8 +70,8 @@ plain_shell() {
 }
 
 # Kitty opens a window by running this with no arguments. Anything else is
-# Kitty using the `shell` option as a shell - `env read_from_shell` runs
-# `<shell> -l -i -c 'command env -0'` to collect variables - and has to be
+# Kitty using the `shell` option as a shell (`env read_from_shell` runs
+# `<shell> -l -i -c 'command env -0'` to collect variables) and has to be
 # answered by the real shell, not by a flower session that never returns.
 #
 # Kitty gives that read 1.5 seconds total, and a login+interactive zsh with a
@@ -102,7 +102,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 # them and the user's `env` lines in kitty.conf are the only thing deciding.
 # This one says how the window was started rather than what the user prefers:
 # Kitty ran us as its `shell`, so the shell we start needs the integration
-# Kitty would have set up itself had it recognised us as a shell.
+# Kitty would have set up itself had it recognized us as a shell.
 FLOWER_CURSOR_KITTY_SHELL=on
 export FLOWER_CURSOR_KITTY_SHELL
 

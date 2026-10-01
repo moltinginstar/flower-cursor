@@ -34,7 +34,7 @@ def test_repeated_report_is_not_a_change() -> None:
   assert focus.feed(FOCUS_OUT) == (b"", False)
 
 
-def test_report_split_across_reads_is_still_recognised() -> None:
+def test_report_split_across_reads_is_still_recognized() -> None:
   focus = FocusFilter()
   assert focus.feed(b"\x1b[") == (b"", False)
   assert focus.has_pending
@@ -108,7 +108,7 @@ def test_typing_brings_back_a_window_that_gave_up_its_guess() -> None:
 
 def test_typing_does_not_override_a_report() -> None:
   # Kitty reports every change once reporting is on, so after one report a
-  # keystroke has nothing to add - even one that arrives via `send-text`.
+  # keystroke has nothing to add, even one that arrives via `send-text`.
   focus = FocusFilter(now=0.0)
   focus.feed(FOCUS_OUT)
   assert not focus.typed()
@@ -145,8 +145,8 @@ def test_keys_count_as_typing(data: bytes) -> None:
     b"",
     b"\x1b[?9;13R",  # our cursor report
     b"\x1b[?62;22c",  # device attributes
-    b"\x1b]11;rgb:0000/0000/0000\x1b\\",  # a colour reply, ST
-    b"\x1b]11;rgb:0000/0000/0000\x07",  # a colour reply, BEL
+    b"\x1b]11;rgb:0000/0000/0000\x1b\\",  # a color reply, ST
+    b"\x1b]11;rgb:0000/0000/0000\x07",  # a color reply, BEL
     b"\x1b_Gi=1;OK\x1b\\",  # a graphics acknowledgement
     b"\x1bP1+r544e=787465726d\x1b\\",  # XTGETTCAP
     b"\x1b[<35;10;5M",  # the pointer moving over an unfocused window

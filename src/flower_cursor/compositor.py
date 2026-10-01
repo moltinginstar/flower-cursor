@@ -19,8 +19,8 @@ def blend_samples(
 
   Pillow only blends a pair at a time, so the weights are folded in one at a
   time against the weight accumulated so far. Which image a sample resolves
-  to is the caller's business - the layered compositor blends one named layer
-  at a time through this - which is what `image_for` supplies.
+  to is the caller's business (the layered compositor blends one named layer
+  at a time through this), which is what `image_for` supplies.
   """
   result: Image.Image | None = None
   accumulated = 0.0

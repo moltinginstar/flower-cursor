@@ -35,7 +35,7 @@ def measured_bee(wait=10.0):
   bee = IdleBee(random.Random(9), interval=wait)
   bee.set_geometry(VIEWPORT, (50, 45))
   bee.move_to(A)
-  # Every wait is randomised around the interval; these tests measure the
+  # Every wait is randomized around the interval; these tests measure the
   # visit rather than the wait, so they pin the first one and read `wait`
   # for the ones the bee samples for itself.
   bee.wait = wait

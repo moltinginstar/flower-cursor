@@ -62,7 +62,7 @@ class FlowerRenderer:
     # Supersampling belongs to whoever draws the pixels: a compositor that
     # renders at twice the cells' own resolution is the only part that
     # knows so. An explicit scale still wins, for a caller laying out a
-    # frame it will resize itself - which is the one case where a renderer
+    # frame it will resize itself, which is the one case where a renderer
     # is built with no compositor at all, to read `layout` and nothing else.
     if canvas_scale is None:
       if compositor is None:

@@ -1,7 +1,7 @@
 """Optional wingbeat audio for the idle bee.
 
-The buzz is synthesized rather than sampled: the visit is improvised - a
-different entry edge, curve and rest length every time - so a loop file could
+The buzz is synthesized rather than sampled: the visit is improvised (a
+different entry edge, curve and rest length every time), so a loop file could
 only be faded in and out over motion it knows nothing about. A wavetable
 oscillator driven from the bee's own state gets the sound the bee is actually
 making: louder as it closes on the bloom, pitch rising with airspeed, and
@@ -11,7 +11,7 @@ Sound is off unless asked for, and the audio backend is an optional extra, so
 everything here has to be missing-able. `BeeBuzz.start` returns whether the
 backend is there; every other method is a no-op when it is not, or when the
 device it opens later refuses. Nothing in this module
-writes to stdout - that file descriptor is the terminal transport.
+writes to stdout; that file descriptor is the terminal transport.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ _MASK = _TABLE_SIZE - 1
 _GLIDE = 0.035
 # Loudness gets its own, much slower constant. The wings tuck in about a
 # quarter of a second and come back out in under a fifth, which is right for
-# the picture and far too fast for the sound - followed literally it switches
+# the picture and far too fast for the sound: followed literally it switches
 # the buzz off and on. A settling bee winds down; a launching one spins up.
 _SETTLE = 0.22
 # Peak amplitude of a full-gain buzz, before the user's own volume. A bee in
@@ -81,11 +81,11 @@ class Timbre:
     harmonic series, so it is built from formants;
   * every stroke throws air around, which is broadband noise pulsing once per
     wingbeat, not a pitched partial;
-  * the wingbeat rate is never steady - it wanders irregularly, which is what
+  * the wingbeat rate is never steady; it wanders irregularly, which is what
     periodic vibrato fails to imitate.
   """
 
-  # (centre Hz, width Hz, level) resonances the wing tone is shaped by.
+  # (center Hz, width Hz, level) resonances the wing tone is shaped by.
   formants: tuple[tuple[float, float, float], ...] = (
     (520.0, 380.0, 1.0),
     (1350.0, 900.0, 0.42),
@@ -94,7 +94,7 @@ class Timbre:
   partials: int = 16
   # Turbulence: bandpassed noise, pulsed by the stroke.
   noise_mix: float = 0.55
-  noise_centre: float = 1700.0
+  noise_center: float = 1700.0
   noise_q: float = 1.1
   # How sharply the stroke pulses the noise. 1 is a gentle swell.
   stroke: float = 2.4
@@ -126,7 +126,7 @@ def _tables(timbre: Timbre) -> tuple[tuple[float, ...], tuple[float, ...]]:
     for partial in range(1, timbre.partials + 1):
       frequency = partial * WINGBEAT
       level = sum(
-        weight * math.exp(-0.5 * ((frequency - centre) / width) ** 2) for centre, width, weight in timbre.formants
+        weight * math.exp(-0.5 * ((frequency - center) / width) ** 2) for center, width, weight in timbre.formants
       )
       # Offset phases keep the partials from piling into one spike, which
       # would spend the headroom on a click rather than on the buzz.
@@ -172,7 +172,7 @@ class Voice:
   """The oscillator itself: tone, turbulence, wander, and no audio device.
 
   Kept separate from the device so the sound can be rendered and inspected
-  without one - the tests run on machines with no audio at all.
+  without one: the tests run on machines with no audio at all.
   """
 
   def __init__(
@@ -206,7 +206,7 @@ class Voice:
     self._flutter_pole = 1 - math.exp(-2 * math.pi * timbre.flutter_hz / sample_rate)
     self._sway_pole = 1 - math.exp(-2 * math.pi * timbre.sway_hz / sample_rate)
     # State-variable bandpass for the turbulence.
-    self._noise_f = 2 * math.sin(math.pi * min(0.45, timbre.noise_centre / sample_rate))
+    self._noise_f = 2 * math.sin(math.pi * min(0.45, timbre.noise_center / sample_rate))
     self._noise_q = 1 / timbre.noise_q
     # Smoothed noise loses most of its amplitude; these put the wander back
     # to roughly unit scale so the depths mean what they say.
@@ -319,8 +319,8 @@ class BeeBuzz:
   The device runs only while there is something to hear. A running device
   asks for samples whether or not they are silent, and synthesizing them is
   most of what the buzz costs, so it is stopped each time the voice falls
-  silent - a bee resting on the bloom, one that has left, a window that lost
-  focus - and started again when the bee is next audible. It is not opened
+  silent (a bee resting on the bloom, one that has left, a window that lost
+  focus) and started again when the bee is next audible. It is not opened
   at all until then: importing the backend and opening a device cost a window
   ~20 MB and ~0.1 s, which a window no bee ever buzzes in should not pay, and
   that tenth of a second is spent on a worker thread so the flower does not

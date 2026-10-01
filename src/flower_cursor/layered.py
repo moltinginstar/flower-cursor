@@ -156,7 +156,7 @@ class LayeredRuntime:
     flowers wither, `update` empties the list as each one finishes, and the
     pane is left with nothing to draw. The bee flies off the way it does
     when the caret moves out from under it, which takes longer than the
-    withering does - `animating` covers both, so the pane keeps drawing
+    withering does; `animating` covers both, so the pane keeps drawing
     until the last of it has gone.
     """
     for flower in self.flowers:

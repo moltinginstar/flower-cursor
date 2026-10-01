@@ -3,7 +3,7 @@
 Kitty 0.43+ lets an application declare extra cursors with
 ``CSI > SHAPE ; TYPE:COORDS ; ... SP q``. Kitty draws those itself, and nothing
 in the protocol asks it not to: `DECTCEM` only gates the real caret
-(``child-monitor.c``) and the extra-cursor colour has no alpha channel
+(``child-monitor.c``) and the extra-cursor color has no alpha channel
 (``screen.c``), so there is no way to make them invisible. We therefore let
 Kitty parse each command, keep our own copy of the resulting cursor set, and
 clear Kitty's copy on the next render tick so only our flowers remain.
@@ -38,7 +38,7 @@ _COORD_REGIONS = 4
 # Shapes that place a cursor. 29 means "whatever the terminal's default is".
 _PLACING_SHAPES = frozenset({0, 1, 2, 3, 29})
 _REMOVE = 0
-_COLOUR_SHAPES = frozenset({30, 40})
+_COLOR_SHAPES = frozenset({30, 40})
 _STATE_QUERY_SHAPE = 100
 
 # Kitty's reply to CSI > 100 SP q. It reports every cursor as a point, and
@@ -87,7 +87,7 @@ class MultiCursorTracker:
     return len(self._shapes)
 
   def handle(self, event: Event) -> None:
-    """Consume one sequence the framer recognised in the child's output."""
+    """Consume one sequence the framer recognized in the child's output."""
     if isinstance(event, MultipleCursors):
       self._command(event.parameters)
     elif isinstance(event, (ScreenErased, AltScreenChange)):
@@ -126,8 +126,8 @@ class MultiCursorTracker:
       if shape == _STATE_QUERY_SHAPE:
         self.pending_state_queries += 1
       return
-    if shape in _COLOUR_SHAPES or shape not in _PLACING_SHAPES:
-      # Colours only tint cursors we are replacing, and an unknown shape
+    if shape in _COLOR_SHAPES or shape not in _PLACING_SHAPES:
+      # Colors only tint cursors we are replacing, and an unknown shape
       # is one Kitty ignores. Neither changes the cursor set.
       return
     self._kitty_holds_cursors = True

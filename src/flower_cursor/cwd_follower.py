@@ -1,12 +1,12 @@
 """Keep the wrapper's own working directory on the shell's.
 
-Kitty answers `launch --cwd=current` - which is what `new_window_with_cwd` and
-its neighbours use - from the OSC 7 directory the shell reports, but only while
+Kitty answers `launch --cwd=current` (which is what `new_window_with_cwd` and
+its neighbors use) from the OSC 7 directory the shell reports, but only while
 `Window.at_prompt` holds. That test is `screen_cursor_at_a_shell_prompt` in
 `screen.c`, and its first condition is `screen_is_cursor_visible`: hiding the
 native cursor, which is the whole point of the flower, makes it permanently
 false. Kitty then falls back to the working directory of the foreground
-process - this wrapper - so new windows would open wherever the wrapper was
+process (this wrapper), so new windows would open wherever the wrapper was
 started rather than where the user is.
 
 Following the shell's own OSC 7 reports with `chdir` puts the right answer in
@@ -53,8 +53,8 @@ def _path_from_url(raw: bytes) -> str | None:
   parts = urlsplit(url)
   if parts.scheme and parts.scheme != "file":
     return None
-  # A hostname that is not ours means the shell is somewhere else entirely -
-  # over ssh, say - and its path is meaningless here. Kitty makes the same
+  # A hostname that is not ours means the shell is somewhere else entirely
+  # (over ssh, say), and its path is meaningless here. Kitty makes the same
   # distinction with `child_is_remote`.
   if parts.hostname and not _is_local(parts.hostname):
     return None

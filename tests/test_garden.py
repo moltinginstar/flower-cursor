@@ -12,10 +12,10 @@ from flower_cursor.geometry import ViewportGeometry
 from flower_cursor.layered import GardenCompositor, LayeredCompositor, LayeredRuntime
 from flower_cursor.lifecycle import CursorCell
 from flower_cursor.multi_runtime import MultiCursorFlowers
-from flower_cursor.settings import FLOWER_CATALOGUE, resolve
+from flower_cursor.settings import FLOWER_CATALOG, resolve
 
-NAMES = [flower.name for flower in FLOWER_CATALOGUE]
-FLOWERS = tuple((flower.manifest, flower.name) for flower in FLOWER_CATALOGUE)
+NAMES = [flower.name for flower in FLOWER_CATALOG]
+FLOWERS = tuple((flower.manifest, flower.name) for flower in FLOWER_CATALOG)
 SIZE = (80, 24, 640, 384)
 
 
@@ -35,7 +35,7 @@ def test_the_two_words_offer_every_bundled_flower(word):
   settings = resolve({"species": word}, {})
   assert settings.order == word
   assert [name for _, name in settings.flowers] == NAMES
-  assert [manifest for manifest, _ in settings.flowers] == [f.manifest for f in FLOWER_CATALOGUE]
+  assert [manifest for manifest, _ in settings.flowers] == [f.manifest for f in FLOWER_CATALOG]
 
 
 def test_a_named_flower_is_still_one_flower_for_good():
@@ -56,7 +56,7 @@ def test_check_says_what_the_words_mean(word, detail):
   assert ("species", detail) in [(label, text) for _, label, text in lines]
 
 
-def test_cycle_walks_the_catalogue_in_order_from_wherever_it_starts():
+def test_cycle_walks_the_catalog_in_order_from_wherever_it_starts():
   garden = Garden(FLOWERS, "cycle", rng=random.Random(3))
   picked = [garden.bloom().name for _ in range(2 * len(NAMES))]
   start = NAMES.index(picked[0])
@@ -94,7 +94,7 @@ def test_every_move_buds_the_next_species_and_each_flower_keeps_its_own():
   first, second, third = grown(runtime, a), grown(runtime, b), grown(runtime, c)
   assert NAMES.index(second) == (NAMES.index(first) + 1) % len(NAMES)
   assert NAMES.index(third) == (NAMES.index(second) + 1) % len(NAMES)
-  # Every flower on screen - the two withering, the one opening - is drawn
+  # Every flower on screen (the two withering, the one opening) is drawn
   # as what it budded as, including how many petals it has to shed.
   by_cell = {visual.cell: visual for visual in runtime.visuals()}
   for cell, name in ((a, first), (b, second), (c, third)):
@@ -169,7 +169,7 @@ def test_a_cycling_recipe_crosses_the_socket_intact():
   recipe = Recipe.from_settings(resolve({"species": "cycle"}, {}), volume=0.0)
   assert recipe.order == "cycle"
   assert Recipe.from_json(recipe.to_json()) == recipe
-  assert recipe.manifest == str(FLOWER_CATALOGUE[0].manifest.absolute())
+  assert recipe.manifest == str(FLOWER_CATALOG[0].manifest.absolute())
 
 
 def test_a_cycling_window_asks_the_renderer_for_each_species_it_draws():

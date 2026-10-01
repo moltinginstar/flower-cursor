@@ -89,9 +89,9 @@ def test_points_outside_the_screen_are_discarded() -> None:
 @pytest.mark.parametrize(
   "command",
   [
-    b"30;2:255:0:0",  # extra-cursor text colour
-    b"40;5:4",  # extra-cursor cursor colour
-    b"7;2:1:1",  # a shape Kitty does not recognise
+    b"30;2:255:0:0",  # extra-cursor text color
+    b"40;5:4",  # extra-cursor cursor color
+    b"7;2:1:1",  # a shape Kitty does not recognize
     b"",  # CSI > SP q, the supported-shapes query
   ],
 )

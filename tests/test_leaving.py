@@ -116,7 +116,7 @@ def visited() -> LayeredRuntime:
   renderer = FlowerRenderer(runtime.pose_library, lambda _: None, compositor=LayeredCompositor(MANIFEST))
   runtime.set_geometry(VIEWPORT, renderer.layout)
   runtime.move_to(A)
-  # The wait between visits is randomised; pin it so these seconds are the
+  # The wait between visits is randomized; pin it so these seconds are the
   # visit's rather than the wait's.
   runtime.bee.interval = runtime.bee.wait = 10.0
   advance(runtime, 10)

@@ -112,7 +112,7 @@ def test_kitty_s_own_caret_stays_hidden_when_the_child_asks_for_it_back() -> Non
   *_, returned = _sections(output)
 
   assert output.startswith(CURSOR_HIDE)
-  # The child's request reaches Kitty - it owns the mode for itself - and is
+  # The child's request reaches Kitty (it owns the mode for itself) and is
   # answered with our own, so only one caret is ever drawn.
   assert returned.startswith(b"\x1b[?12;25h")
   assert CURSOR_HIDE in returned

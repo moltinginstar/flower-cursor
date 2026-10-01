@@ -103,7 +103,7 @@ def main():
       record["depths"][group] = world_to_camera_view(scene, scene.camera, center).z
       path = OUTPUT / f"{name}_{group}.png"
       record["layers"][group] = path.name
-      if not path.exists():
+      if not path.exists() and study.bakes(group):
         for obj in objects:
           obj.hide_render = obj not in members
         scene.render.filepath = str(path)

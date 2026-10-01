@@ -15,7 +15,7 @@ _STUCK_TRANSFER_TIMEOUT = 5.0
 class OutputArbiter:
   """Keep renderer writes out of the middle of the child's escape sequences.
 
-  Child bytes are forwarded the moment they arrive - nothing is buffered and
+  Child bytes are forwarded the moment they arrive; nothing is buffered and
   nothing is ever truncated. A `VTFramer` follows the stream and reports
   whether it currently sits at a sequence boundary; renderer writes are
   admitted only there.
@@ -41,7 +41,7 @@ class OutputArbiter:
     self._transfer_since: float | None = None
 
   def add_listener(self, listener: Callable[[Event], object]) -> None:
-    """Subscribe to the sequences the framer recognises in the child stream."""
+    """Subscribe to the sequences the framer recognizes in the child stream."""
     self._listeners.append(listener)
 
   @property
@@ -89,8 +89,8 @@ class OutputArbiter:
     """Allow cleanup writes once the child has stopped producing output.
 
     A child that died part-way through a sequence will never finish it, so
-    the dangling sequence is cancelled with CAN - the abort the parser
-    already defines - rather than left for the terminal to misread.
+    the dangling sequence is canceled with CAN (the abort the parser
+    already defines) rather than left for the terminal to misread.
     """
     self._framer.reset_graphics_transfer()
     self._transfer_since = None

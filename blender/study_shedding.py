@@ -24,6 +24,15 @@ from flower_cursor.stalk_motion import wilt_point, wilt_progress
 
 OUTPUT = Path(os.environ.get("FLOWER_STUDY_DIR", "/tmp/flower-shedding-study"))
 ORIGINAL_STEM_POINT = authored.stem_point
+# Stills such as the README banner want the same scenes far larger than the
+# runtime's 512px canvas, and only the whole flower: a scale multiplies the
+# render size without moving the camera, and a layer list skips the rest.
+BAKE_SCALE = int(os.environ.get("FLOWER_BAKE_SCALE", "1"))
+BAKE_LAYERS = set(filter(None, os.environ.get("FLOWER_BAKE_LAYERS", "").split(",")))
+
+
+def bakes(layer):
+  return not BAKE_LAYERS or layer in BAKE_LAYERS
 
 
 def stem_point(t, stem_length, bend, head_lean, collapse=0.0):
@@ -83,8 +92,8 @@ def capture_flight(flight: PetalFlight):
 def browned(color, amount, brown):
   """*color* mixed *amount* of the way toward *brown*, keeping its alpha.
 
-  Dying tissue is the same operation wherever it happens - a fallen petal
-  here, a withering stem in `bake_layered_flower` - and the two looked
+  Dying tissue is the same operation wherever it happens (a fallen petal
+  here, a withering stem in `bake_layered_flower`), and the two looked
   different only because each spelled the mix out again.
   """
   mixed = tuple(c * (1.0 - amount) + b * amount for c, b in zip(color[:3], brown))
@@ -128,6 +137,8 @@ def expand_canvas(scene):
   after = world_to_camera_view(scene, camera, Vector())
   assert abs(after.x * 512 - (before.x * 256 + 128)) < 0.001
   assert abs((1 - after.y) * 512 - (1 - before.y) * 256) < 0.001
+  scene.render.resolution_x *= BAKE_SCALE
+  scene.render.resolution_y *= BAKE_SCALE
   for obj in scene.objects:
     if obj.name.startswith("Fallen_petal_") and obj.scale.x > 0.001:
       for vertex in obj.data.vertices:

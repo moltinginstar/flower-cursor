@@ -1,8 +1,8 @@
 """Which flower each new bloom is: one species for good, or a new one every time.
 
 A window used to grow one species for as long as it was open. With `cycle` or
-`random` every bud - each time the caret moves to a new cell, or the flowers
-grow back - is picked afresh, so a single window shows several species at
+`random` every bud (each time the caret moves to a new cell, or the flowers
+grow back) is picked afresh, so a single window shows several species at
 once while the old flowers wither and the new one opens. A flower keeps the
 species it budded as until it is gone: returning to a cell whose flower is
 still withering restores that flower rather than picking another.
@@ -40,8 +40,8 @@ class Species:
 def load_species(manifest: Path, name: str | None = None) -> Species:
   """A species, parsed once per process however many windows grow it.
 
-  Cached so that every flower of one species - across cursors, and across
-  windows in the shared renderer - holds the same object, which is also
+  Cached so that every flower of one species (across cursors, and across
+  windows in the shared renderer) holds the same object, which is also
   what the compositor tells species apart by.
   """
   data = manifest_data(manifest)

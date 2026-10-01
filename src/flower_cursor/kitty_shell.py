@@ -6,8 +6,8 @@ early when `get_supported_shell_name(argv[0])` is None, and on macOS Kitty
 reaches that setup by running the shell through `kitten run-shell` instead
 (`Child.should_run_via_run_shell_kitten`, `kitty/child.py`). A wrapper
 installed as `shell` is not a recognized shell, so a window started through it
-would lose prompt marks, cwd reporting, `clone-in-kitty`, completions, and -
-on macOS - login-mode rc files, because `run-shell` is also what execs the
+would lose prompt marks, cwd reporting, `clone-in-kitty`, completions, and
+(on macOS) login-mode rc files, because `run-shell` is also what execs the
 shell with a `-` argv0 (`tools/tui/run.go`).
 
 Nesting `kitten run-shell` inside our PTY restores all of it: the kitten sets
@@ -25,7 +25,7 @@ from pathlib import Path
 
 # Names this project installs as a program. If one of them is what $SHELL
 # points at, the variable is describing the wrapper rather than a shell, and
-# honouring it would nest wrappers without end.
+# honoring it would nest wrappers without end.
 _OUR_NAMES = frozenset({"flower-cursor", "flower-cursor-shell"})
 
 
@@ -72,8 +72,8 @@ def kitten_executable(environ: Mapping[str, str] | None = None) -> str | None:
 def shell_command(environ: Mapping[str, str] | None = None) -> list[str]:
   """Build the command that starts the user's shell with integration.
 
-  Without a kitten to nest - a non-Kitty terminal, or a Kitty whose install
-  we cannot locate - the shell is started directly in login/interactive mode.
+  Without a kitten to nest (a non-Kitty terminal, or a Kitty whose install
+  we cannot locate), the shell is started directly in login/interactive mode.
   It loses integration, but it is still the user's shell.
   """
   environ = os.environ if environ is None else environ
@@ -82,7 +82,7 @@ def shell_command(environ: Mapping[str, str] | None = None) -> list[str]:
   if kitten is None:
     return [shell, "-l", "-i"]
   # `--shell .` would ask the kitten to guess, and its guess walks up to the
-  # `shell` option in kitty.conf - which is this wrapper. Naming the shell
+  # `shell` option in kitty.conf, which is this wrapper. Naming the shell
   # outright is what keeps that from recursing.
   return [kitten, "run-shell", "--shell", shell]
 

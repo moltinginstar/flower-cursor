@@ -23,7 +23,7 @@ from .screen_resets import ScreenResets
 from .settings import (
   DEFAULT_MANIFEST,
   DEFAULT_SPECIES,
-  FLOWER_CATALOGUE,
+  FLOWER_CATALOG,
   FLOWER_DESCRIPTIONS,
   FLOWER_MANIFESTS,
   OFF,
@@ -41,7 +41,7 @@ from .shared import RemoteDrawing, connect, runtime_directory
 __all__ = [
   "DEFAULT_MANIFEST",
   "DEFAULT_SPECIES",
-  "FLOWER_CATALOGUE",
+  "FLOWER_CATALOG",
   "FLOWER_DESCRIPTIONS",
   "FLOWER_MANIFESTS",
   "OFF",
@@ -141,8 +141,8 @@ def _grow(recipe: Recipe, command: list[str], write, report):
 class _Window:
   """One wrapped window: what it knows, and what it does when told something.
 
-  The PTY loop calls in from several directions - a cursor report, terminal
-  output, a frame timer, a focus change - and each of them reads or moves
+  The PTY loop calls in from several directions (a cursor report, terminal
+  output, a frame timer, a focus change), and each of them reads or moves
   the same handful of things. They are attributes here rather than a set of
   closures over one long function, so what a window is made of can be read
   without reading every callback that touches it.
@@ -304,7 +304,7 @@ class _Window:
   def on_focus(self, is_focused: bool) -> None:
     self.focused = is_focused
     # Kitty draws no caret in an inactive split, so neither do we. The
-    # flowers leave the only way flowers ever leave - they wither - and the
+    # flowers leave the only way flowers ever leave (they wither), and the
     # pane keeps drawing until they have, then goes idle. Coming back needs
     # nothing: with the old flowers gone, the next cursor report buds a new
     # one and it grows in. The bee is still on its way out, but it is on
@@ -358,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
     # that something is wrong, and a report that needs a working install to
     # print is no use to the person whose install is broken. It is given
     # the same settings a window would run with, so what it describes is
-    # this invocation rather than an idealised one.
+    # this invocation rather than an idealized one.
     from .check import run_check
 
     return run_check(resolve(given))

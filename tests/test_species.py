@@ -8,7 +8,7 @@ from flower_cursor.lifecycle import CursorCell, FlowerInstance
 from flower_cursor.observer import (
   DEFAULT_MANIFEST,
   DEFAULT_SPECIES,
-  FLOWER_CATALOGUE,
+  FLOWER_CATALOG,
   FLOWER_DESCRIPTIONS,
   FLOWER_MANIFESTS,
   build_parser,
@@ -120,9 +120,9 @@ def test_species_support_bounds_clamp_bee_landing_offsets() -> None:
 PUBLIC_FLOWERS = ("anemone", "cornflower", "daisy", "crocus", "poppy", "dahlia", "orchid")
 
 
-def test_flower_catalogue_has_the_public_seven_species_in_order() -> None:
+def test_flower_catalog_has_the_public_seven_species_in_order() -> None:
   assert DEFAULT_SPECIES == "anemone"
-  assert tuple(flower.name for flower in FLOWER_CATALOGUE) == PUBLIC_FLOWERS
+  assert tuple(flower.name for flower in FLOWER_CATALOG) == PUBLIC_FLOWERS
   assert tuple(FLOWER_MANIFESTS) == PUBLIC_FLOWERS
   assert FLOWER_MANIFESTS["anemone"] == DEFAULT_MANIFEST
   for name in PUBLIC_FLOWERS[1:]:

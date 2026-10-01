@@ -51,7 +51,7 @@ def _sync_window_size(master_fd: int, stdin_fd: int) -> None:
 
   `termios.tcgetwinsize` reports only rows and columns. Dropping ws_xpixel
   and ws_ypixel leaves the child believing the terminal cannot report pixel
-  geometry, which is how a child learns its cell size - without it `icat` and
+  geometry, which is how a child learns its cell size; without it `icat` and
   every other image-capable program refuses to draw.
 
   A size we cannot read is not worth dying over: stdin is a pipe under a
@@ -93,14 +93,14 @@ def run(
   """Run *command* behind a PTY and report Kitty cursor cells to a callback.
 
   With a *focus_filter*, an unfocused window stops polling for the caret
-  immediately - Kitty does not draw one in an inactive split - but keeps
+  immediately (Kitty does not draw one in an inactive split) but keeps
   ticking while *wants_tick* says something is still on its way off the
   screen, so what was drawn can leave the way it is meant to before the
   window falls idle.
 
   With *hide_cursor*, Kitty's own caret is kept hidden for as long as the
   child runs, and every DECTCEM request the child makes is reported to
-  *on_visibility* first - an application that hides the caret is about to
+  *on_visibility* first: an application that hides the caret is about to
   draw its own. *wants_cursor* answers whether a caret is being drawn at all;
   while it says no there is nothing to ask Kitty about, so the poll stops.
   """
@@ -200,8 +200,8 @@ def run(
       drawn = wants_cursor is None or wants_cursor()
       animating = focused or (wants_tick is not None and wants_tick())
       if output_arbiter.can_write:
-        # The caret is only worth asking about while it is drawn - by
-        # this window, in this pane - but the frame timer outlives both
+        # The caret is only worth asking about while it is drawn (by
+        # this window, in this pane), but the frame timer outlives both
         # by however long the flowers take to go; once they have, there
         # is no timer at all and the loop sleeps until the child or the
         # user says otherwise.
@@ -271,7 +271,7 @@ def run(
       # The same release the focus filter gets, for the same reason: a
       # lone Escape is the start of a cursor report until it is clear no
       # more is coming. Without this it would wait on the next keystroke,
-      # which with no focus filter in front of it - observe-only mode -
+      # which with no focus filter in front of it (observe-only mode)
       # leaves Escape looking dead in vim or readline.
       if report_hold is not None and now >= report_hold:
         report_hold = None

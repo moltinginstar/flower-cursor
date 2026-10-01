@@ -32,7 +32,7 @@ from .lifecycle import CursorCell
 # looks wrong.
 DAEMON_VARIABLE = "FLOWER_CURSOR_DAEMON"
 OFF = "off"
-# Long enough for a cold start - an interpreter, Pillow and a species - on a
+# Long enough for a cold start (an interpreter, Pillow and a species) on a
 # slow machine; past it the window draws for itself rather than wait.
 STARTUP_TIMEOUT = 5.0
 # A tick is one frame; a renderer that has not drawn one in this long is gone.
@@ -112,7 +112,7 @@ def _spawn(directory: Path, tag: str) -> None:
   # The launcher forks the renderer and exits at once, so the renderer is
   # nobody's child and this window cannot leave a zombie behind.
   if launcher.wait(timeout=STARTUP_TIMEOUT) != 0:
-    # It failed before it could fork - an import error, most likely - and
+    # It failed before it could fork (an import error, most likely), and
     # waiting out the startup timeout for it would only delay the window.
     raise subprocess.SubprocessError(f"the renderer exited with {launcher.returncode}")
 

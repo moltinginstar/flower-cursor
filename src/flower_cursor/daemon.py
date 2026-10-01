@@ -3,7 +3,7 @@
 A wrapper connects, says which flower it grows, and from then on sends one
 tick per frame; this process runs that window's `LocalDrawing` and replies
 with the graphics bytes it wrote. What every window would otherwise hold its
-own copy of - Pillow, the decoded artwork, the audio device - is held here
+own copy of (Pillow, the decoded artwork, the audio device) is held here
 once. See `docs/shared-renderer.md`.
 
 Started by `shared._spawn` as `python -m flower_cursor.daemon DIRECTORY TAG`.

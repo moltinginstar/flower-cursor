@@ -149,7 +149,7 @@ def test_artwork_of_your_own_is_named_by_path(tmp_path):
   manifest.write_text("{}")
   settings = resolve({"species": str(manifest)}, {})
   assert settings.manifest == manifest
-  # Nothing in the catalogue to name, and nothing that second-guesses it.
+  # Nothing in the catalog to name, and nothing that second-guesses it.
   assert settings.species_name is None
 
 

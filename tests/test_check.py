@@ -131,7 +131,7 @@ def test_the_nested_shell_integration_is_reported_when_kitty_asked_for_it(
 
 def test_a_missing_flower_breaks_the_report(monkeypatch: pytest.MonkeyPatch) -> None:
   absent = FlowerSpec("ghost", "Nothing at all", Path("/nowhere/manifest.json"))
-  monkeypatch.setattr(check, "FLOWER_CATALOGUE", (*check.FLOWER_CATALOGUE, absent))
+  monkeypatch.setattr(check, "FLOWER_CATALOG", (*check.FLOWER_CATALOG, absent))
   lines, broken = check.report()
   assert broken
   assert any(status == check._BAD and label == "flowers" for status, label, _ in lines)
@@ -153,8 +153,8 @@ def installed(monkeypatch: pytest.MonkeyPatch) -> None:
   # the report rather than about who has rendered what lately.
   monkeypatch.setattr(
     check,
-    "FLOWER_CATALOGUE",
-    tuple(flower for flower in check.FLOWER_CATALOGUE if flower.manifest.exists()),
+    "FLOWER_CATALOG",
+    tuple(flower for flower in check.FLOWER_CATALOG if flower.manifest.exists()),
   )
 
 

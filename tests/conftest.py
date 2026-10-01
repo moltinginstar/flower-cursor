@@ -1,6 +1,6 @@
 """The suite runs in the developer's own shell, and answers to nothing in it.
 
-Every `FLOWER_CURSOR_*` variable is a real setting - species, buzz, bee - so a
+Every `FLOWER_CURSOR_*` variable is a real setting (species, buzz, bee), so a
 developer who runs the flower with a species they like would otherwise see
 tests fail on their machine and pass on everyone else's. Clearing the prefix
 rather than a list keeps that true for settings added later. Tests that are

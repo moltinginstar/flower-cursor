@@ -1,7 +1,7 @@
 """Everything that turns a window's cursor into pixels, in this process.
 
 A wrapper hands its drawing to one of two things with the same methods: this,
-or `shared.RemoteDrawing`, which sends the same calls to the shared renderer -
+or `shared.RemoteDrawing`, which sends the same calls to the shared renderer,
 where they arrive here. Nothing in this module reads the terminal; it is told
 the cursor, the viewport and the screen resets, and writes graphics bytes.
 
@@ -48,7 +48,7 @@ class Drawing(Protocol):
 class Recipe:
   """What a window's drawing is built from, in a form that crosses a socket."""
 
-  # Every flower the window can grow, as a manifest and its catalogue name
+  # Every flower the window can grow, as a manifest and its catalog name
   # (None for artwork of the user's own), and how a bud picks among them.
   flowers: tuple[tuple[str, str | None], ...]
   order: str

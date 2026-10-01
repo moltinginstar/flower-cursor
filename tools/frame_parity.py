@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from flower_cursor.layered import LayeredCompositor, LayeredRuntime
 from flower_cursor.runtime import CursorCell
-from flower_cursor.settings import FLOWER_CATALOGUE
+from flower_cursor.settings import FLOWER_CATALOG
 
 STEP = 1 / 60
 HOME, AWAY = CursorCell(12, 20), CursorCell(12, 24)
@@ -54,7 +54,7 @@ def frames(manifest: Path, species: str):
 
 def digests() -> dict[str, dict[str, object]]:
   result = {}
-  for spec in FLOWER_CATALOGUE:
+  for spec in FLOWER_CATALOG:
     hashes = [h.hexdigest() for h in frames(spec.manifest, spec.name)]
     combined = hashlib.sha256("".join(hashes).encode()).hexdigest()
     result[spec.name] = {"frames": len(hashes), "digest": combined, "hashes": hashes}

@@ -6,7 +6,7 @@ from PIL import Image
 
 from flower_cursor import layered, observer
 from flower_cursor.lifecycle import CursorCell
-from flower_cursor.settings import FLOWER_CATALOGUE
+from flower_cursor.settings import FLOWER_CATALOG
 
 
 def test_bundled_manifest_contains_complete_portable_runtime_assets():
@@ -40,7 +40,7 @@ def test_bundled_manifest_contains_complete_portable_runtime_assets():
         assert bounds[2] <= right and bounds[3] <= bottom
 
 
-@pytest.mark.parametrize("spec", FLOWER_CATALOGUE, ids=lambda spec: spec.name)
+@pytest.mark.parametrize("spec", FLOWER_CATALOG, ids=lambda spec: spec.name)
 def test_every_bundled_species_keeps_only_the_rectangle_each_layer_draws(spec):
   data = json.loads(spec.manifest.read_text())
   assert data["crops"]["canvas"] == [256, 256]

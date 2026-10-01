@@ -13,13 +13,13 @@ from .settings import DEFAULT_SPECIES
 # The default flower was authored before there were species, under the name
 # "coral" and with six petals shed in a hand-picked order. Its manifest,
 # assets/layered/manifest.json, still carries neither a `species` key nor
-# `shedding_groups`, so this order is what it resolves to - it is the default
-# anemone's actual behaviour, not a compatibility shim for someone else's old
+# `shedding_groups`, so this order is what it resolves to; it is the default
+# anemone's actual behavior, not a compatibility shim for someone else's old
 # file. Deleting it changes what the default cursor does.
 #
 # The name, though, resolves to DEFAULT_SPECIES: that manifest is the anemone
-# the catalogue offers, and naming it "coral" made the catalogue's own default
-# unusable when passed explicitly - load_species_metadata(DEFAULT_MANIFEST,
+# the catalog offers, and naming it "coral" made the catalog's own default
+# unusable when passed explicitly: load_species_metadata(DEFAULT_MANIFEST,
 # selected_species="anemone") raised. "coral" is not an accepted alias.
 LEGACY_CORAL_SHEDDING_ORDER = (1, 4, 0, 5, 2, 3)
 

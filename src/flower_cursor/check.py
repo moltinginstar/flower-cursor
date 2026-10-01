@@ -1,8 +1,8 @@
 """Report whether this machine is set up to grow flowers.
 
 Nothing here draws anything or talks to the terminal: it inspects the parts an
-install is made of - Kitty, the launcher, the flower assets and the settings
-that point at them - and says what it found. A window that stays flowerless
+install is made of (Kitty, the launcher, the flower assets and the settings
+that point at them) and says what it found. A window that stays flowerless
 usually has exactly one of these wrong, and reading it off a list beats
 guessing at it from an empty screen.
 
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import TextIO
 
 from .settings import (
-  FLOWER_CATALOGUE,
+  FLOWER_CATALOG,
   KITTY_SHELL_VARIABLE,
   SETTINGS,
   Settings,
@@ -29,7 +29,7 @@ from .settings import (
 )
 
 # The same settings `install.sh` writes, so the report describes the install
-# the user actually performed rather than an idealised one. A test holds these
+# the user actually performed rather than an idealized one. A test holds these
 # to the ones in `install.sh`, which is the copy that does the writing.
 BEGIN_MARKER = "# >>> flower-cursor >>>"
 END_MARKER = "# <<< flower-cursor <<<"
@@ -129,7 +129,7 @@ def _unmanaged_shell(text: str) -> str | None:
     stripped = line.strip()
     if not stripped.startswith("shell "):
       continue
-    # The launcher can live anywhere a user put it, so recognise it by
+    # The launcher can live anywhere a user put it, so recognize it by
     # name rather than by the path this copy happens to sit at.
     if LAUNCHER_NAME in stripped:
       return stripped
@@ -141,7 +141,7 @@ def _setting_lines(settings: Settings) -> list[tuple[str, str, str]]:
 
   Every row comes from the resolved settings rather than from the raw
   variables, so the report says what a window will actually do rather than
-  what a config file appears to ask for - an unreadable value has already
+  what a config file appears to ask for: an unreadable value has already
   been replaced by the default, and this says so.
   """
   lines = []
@@ -209,11 +209,11 @@ def report(settings: Settings | None = None) -> tuple[list[tuple[str, str, str]]
   else:
     lines.append((_OK, "launcher", str(launcher)))
 
-  missing = [flower.name for flower in FLOWER_CATALOGUE if not flower.manifest.exists()]
+  missing = [flower.name for flower in FLOWER_CATALOG if not flower.manifest.exists()]
   if missing:
     lines.append((_BAD, "flowers", f"no assets for {', '.join(missing)}"))
   else:
-    lines.append((_OK, "flowers", f"{len(FLOWER_CATALOGUE)} installed"))
+    lines.append((_OK, "flowers", f"{len(FLOWER_CATALOG)} installed"))
 
   config = kitty_config_path()
   text = _read_config(config)

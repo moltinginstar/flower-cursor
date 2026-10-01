@@ -154,7 +154,7 @@ def test_real_cornflower_bee_uses_bounded_offset_and_touches_rendered_bloom() ->
     compositor = LayeredCompositor(MANIFEST, species="cornflower")
     runtime.set_geometry(VIEWPORT, layout)
     runtime.move_to(CursorCell(8, 12))
-    # The wait between visits is randomised; pin it so this budget covers
+    # The wait between visits is randomized; pin it so this budget covers
     # the visit rather than the wait.
     runtime.bee.interval = runtime.bee.wait = 10.0
     for _ in range(2000):

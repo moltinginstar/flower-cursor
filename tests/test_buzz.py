@@ -36,7 +36,7 @@ def visiting(seconds, *, seed=9):
   bee = IdleBee(random.Random(seed))
   bee.set_geometry(VIEWPORT, (50, 45))
   bee.move_to(CursorCell(8, 12))
-  # The wait is randomised per visit; these measure the flight, not the wait.
+  # The wait is randomized per visit; these measure the flight, not the wait.
   bee.wait = 10.0
   remaining = seconds
   while remaining > 1e-9:
@@ -79,7 +79,7 @@ def test_the_bee_fades_out_through_the_edge_rather_than_being_cut_off(seed):
   bee = IdleBee(random.Random(seed))
   bee.set_geometry(VIEWPORT, (50, 45))
   bee.move_to(CursorCell(8, 12))
-  # The wait is randomised per visit; these measure the flight, not the wait.
+  # The wait is randomized per visit; these measure the flight, not the wait.
   bee.wait = 10.0
   last, elapsed, seen = 0.0, 0.0, False
   while elapsed < 60:
@@ -159,7 +159,7 @@ def test_volume_scales_the_output():
 
 
 def test_the_tone_is_the_pitch_it_claims_to_be():
-  """Find the period by autocorrelation - turbulence defeats zero crossings."""
+  """Find the period by autocorrelation; turbulence defeats zero crossings."""
   voice = Voice(rng=random.Random(5))
   voice.target = BuzzState(1.0, 240.0)
   voice.render(SAMPLE_RATE)
@@ -425,7 +425,7 @@ def test_an_unfocused_tab_keeps_no_bee_and_falls_silent():
   runtime.set_geometry(VIEWPORT, renderer.layout)
   runtime.move_to(CursorCell(8, 12))
   runtime.bee.interval = runtime.bee.wait = 10.0
-  # Fly on until it is both there and beating its wings - a landed bee has
+  # Fly on until it is both there and beating its wings: a landed bee has
   # them tucked, and a tucked bee is silent for reasons of its own.
   for _ in range(3600):
     runtime.update(1 / 60)

@@ -44,7 +44,7 @@ def test_default_library_covers_every_growth_idle_and_exit_family() -> None:
   """Each family the lifecycle can ask for is authored end to end.
 
   A gap here is invisible until the flower reaches that state and snaps to a
-  neighbour, so the counts are asserted rather than a sample of names.
+  neighbor, so the counts are asserted rather than a sample of names.
   """
   names = {asset.name for asset in PoseLibrary.from_manifest(DEFAULT_MANIFEST).assets}
   for prefix, count in (("grow", 36), ("idle", 24)):

@@ -45,7 +45,7 @@ class CursorReportParser:
 
     A lone Escape looks like the start of a report, so it is held. Without
     this the byte would sit here until the next keystroke, which in
-    observe-only mode - where no focus filter holds it first - makes Escape
+    observe-only mode (where no focus filter holds it first) makes Escape
     look dead in vim or readline.
     """
     pending, self._pending = self._pending, b""

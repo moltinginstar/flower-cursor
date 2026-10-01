@@ -1,9 +1,9 @@
 """Track VT sequence boundaries in a terminal output stream.
 
 The renderer injects Kitty graphics commands into the same stream the child
-writes to. Injecting in the middle of any escape sequence - or between the
-bytes of a UTF-8 character - corrupts it, so the runtime needs to know when the
-stream is at a boundary. This is a framer, not an emulator: it recognises where
+writes to. Injecting in the middle of any escape sequence (or between the
+bytes of a UTF-8 character) corrupts it, so the runtime needs to know when the
+stream is at a boundary. This is a framer, not an emulator: it recognizes where
 sequences begin and end, and leaves their meaning to Kitty. The state machine
 follows the DEC VT500-series parser described at https://vt100.net/emu/dec_ansi_parser.
 """
@@ -205,7 +205,7 @@ class VTFramer:
       self._state = _State.ESCAPE_INTERMEDIATE
     elif 0x30 <= byte <= 0x7E:
       self._enter_ground()
-      if byte == 0x63:  # c - RIS
+      if byte == 0x63:  # c: RIS
         # A reset restores every mode's default, and DECTCEM's default
         # is a visible caret.
         self._extra_events.append(CursorVisibility(visible=True))
@@ -332,7 +332,7 @@ class VTFramer:
       values = _numeric_parameters(parameters)
       if values and values[0] in _ERASING_ED_PARAMETERS:
         return ScreenErased(full_reset=False)
-    if final == 0x70 and not private and intermediates == b"!":  # ! p - DECSTR
+    if final == 0x70 and not private and intermediates == b"!":  # ! p: DECSTR
       # A soft reset drops the extra cursors exactly as RIS does; it
       # leaves the screen alone, so it is not reported as a full reset.
       # DECTCEM is one of the modes it puts back, so the caret returns.

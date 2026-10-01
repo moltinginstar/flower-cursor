@@ -25,13 +25,13 @@ from .bee import DEFAULT_INTERVAL
 
 DEFAULT_SPECIES = "anemone"
 DEFAULT_MANIFEST = Path(__file__).with_name("assets") / "layered" / "manifest.json"
-# One word turns off everything that can be turned off - the bee, the buzz,
-# the log - so there is a single thing to learn and a single thing to document.
+# One word turns off everything that can be turned off (the bee, the buzz,
+# the log), so there is a single thing to learn and a single thing to document.
 # Anything else is a value, so a variable left over from some other tool cannot
 # quietly empty the screen.
 OFF = "off"
 # How a window picks its flowers: one named species for good, or a new pick
-# for every bud - the next flower in the catalogue, or any other one. The two
+# for every bud: the next flower in the catalog, or any other one. The two
 # words are species values rather than a setting of their own, because they
 # answer the same question the species does: which flower grows.
 FIXED = "fixed"
@@ -52,7 +52,7 @@ class FlowerSpec:
 # out per flower. The default is the exception: it was the only flower before
 # there were species, and its directory keeps the name it was authored under.
 _ASSETS = DEFAULT_MANIFEST.parent.parent
-FLOWER_CATALOGUE = tuple(
+FLOWER_CATALOG = tuple(
   FlowerSpec(
     name,
     description,
@@ -68,8 +68,8 @@ FLOWER_CATALOGUE = tuple(
     ("orchid", "Green-and-white slipper orchid"),
   )
 )
-FLOWER_MANIFESTS = {flower.name: flower.manifest for flower in FLOWER_CATALOGUE}
-FLOWER_DESCRIPTIONS = {flower.name: flower.description for flower in FLOWER_CATALOGUE}
+FLOWER_MANIFESTS = {flower.name: flower.manifest for flower in FLOWER_CATALOG}
+FLOWER_DESCRIPTIONS = {flower.name: flower.description for flower in FLOWER_CATALOG}
 
 # A day is far longer than any window stays still; past that, a bee interval is
 # a typo rather than a preference. The tick and frame-rate limits are the same
@@ -82,8 +82,8 @@ DEFAULT_UNIQUE_FLOWERS = 12
 DEFAULT_POLL_INTERVAL = 1 / 30
 DEFAULT_FPS = 60.0
 # The one setting with no flag. It is not a preference but a statement about
-# how the process was started - Kitty ran us as its `shell`, so the shell we
-# start needs the integration Kitty would have set up itself - and the launcher
+# how the process was started (Kitty ran us as its `shell`, so the shell we
+# start needs the integration Kitty would have set up itself), and the launcher
 # is the only thing in a position to know it.
 KITTY_SHELL_VARIABLE = "FLOWER_CURSOR_KITTY_SHELL"
 
@@ -194,7 +194,7 @@ class Setting:
 
 def flower_help() -> str:
   """Every bundled flower and what it looks like, for `--species --help`."""
-  return "; ".join(f"{flower.name}: {flower.description}" for flower in FLOWER_CATALOGUE)
+  return "; ".join(f"{flower.name}: {flower.description}" for flower in FLOWER_CATALOG)
 
 
 SETTINGS = (
@@ -214,7 +214,7 @@ SETTINGS = (
     f"{DEFAULT_INTERVAL:g}",
     "SECONDS|off",
     "how long the caret stays still before a bee visits, on average; the wait is "
-    "randomised around it and starts over whenever the caret moves or the bee leaves, "
+    "randomized around it and starts over whenever the caret moves or the bee leaves, "
     "0 brings one as soon as the caret stops, and off grows the flower without a visitor",
   ),
   Setting(
@@ -288,31 +288,31 @@ class Settings:
 
   @property
   def flowers(self) -> tuple[tuple[Path, str | None], ...]:
-    """Every flower this window can grow, as a manifest and its catalogue name.
+    """Every flower this window can grow, as a manifest and its catalog name.
 
-    One for a named or a path-given species; the whole catalogue, in its
+    One for a named or a path-given species; the whole catalog, in its
     order, for `cycle` and `random`. The name is None when the artwork is
     the user's own.
     """
     if isinstance(self.species, Path):
       return ((self.species, None),)
     if self.species in ORDERS:
-      return tuple((flower.manifest, flower.name) for flower in FLOWER_CATALOGUE)
+      return tuple((flower.manifest, flower.name) for flower in FLOWER_CATALOG)
     return ((FLOWER_MANIFESTS[self.species], self.species),)
 
   @property
   def manifest(self) -> Path:
     """The assets this window grows, whether named or given as a path.
 
-    For `cycle` and `random`, the first flower of the catalogue.
+    For `cycle` and `random`, the first flower of the catalog.
     """
     return self.flowers[0][0]
 
   @property
   def species_name(self) -> str | None:
-    """The catalogue name, or None when the artwork is the user's own.
+    """The catalog name, or None when the artwork is the user's own.
 
-    For `cycle` and `random`, the first flower of the catalogue.
+    For `cycle` and `random`, the first flower of the catalog.
     """
     return self.flowers[0][1]
 

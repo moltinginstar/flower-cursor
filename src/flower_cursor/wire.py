@@ -1,7 +1,7 @@
 """How a wrapper and the shared renderer talk: one framed message at a time.
 
 Each message is two big-endian 32-bit lengths, a JSON header of that first
-length, and an opaque payload of the second - graphics bytes on the way back,
+length, and an opaque payload of the second: graphics bytes on the way back,
 nothing on the way there. JSON rather than pickle because the renderer
 decodes whatever arrives on its socket; the socket is the user's own, but a
 format that cannot run code is still the one to read it with.
