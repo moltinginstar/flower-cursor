@@ -448,11 +448,14 @@ def test_a_renderer_that_cannot_start_is_given_up_on_at_once(monkeypatch):
     shutil.rmtree(directory)
 
 
-def test_a_renderer_whose_socket_is_cleaned_away_listens_again(renderer):
-  (renderer / "test.sock").unlink()
+def test_a_renderer_whose_socket_is_cleaned_away_listens_again(monkeypatch, renderer):
+  # Only the running renderer may answer; a spawned one would outlive the test.
+  monkeypatch.setattr(shared, "_spawn", lambda directory, tag: None)
   written = bytearray()
-  drawing = remote(renderer, written)
-  drawing.close()
+  staying = remote(renderer, written)
+  (renderer / "test.sock").unlink()
+  remote(renderer, written).close()
+  staying.close()
 
 
 def test_a_renderer_waits_for_one_that_is_leaving(monkeypatch):
