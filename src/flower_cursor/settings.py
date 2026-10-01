@@ -119,7 +119,7 @@ def _species(text: str) -> str | Path:
     if not manifest.is_file():
       raise ValueError(f"no flower manifest at {manifest}")
     return manifest
-  raise ValueError(f"{text!r} is not a flower; there is {', '.join((*FLOWER_MANIFESTS, *ORDERS))}")
+  raise ValueError(f"{text!r} is not one of {', '.join(FLOWER_MANIFESTS)}, {' or '.join(ORDERS)}")
 
 
 def _bee(text: str) -> float | None:
@@ -339,7 +339,7 @@ def resolve(
       values[setting.attribute] = setting.parse(text)
       sources[setting.name] = source
     except ValueError as error:
-      values[setting.attribute] = _fall_back(f"{source} {error}, using {setting.default_text}", setting.default)
+      values[setting.attribute] = _fall_back(f"{source} {error}; using {setting.default_text}", setting.default)
       sources[setting.name] = "default"
   return Settings(**values, sources=sources)
 
