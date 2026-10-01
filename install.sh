@@ -21,7 +21,7 @@ Usage: install.sh [options]
   --configure      write the Kitty settings for me, keeping a backup
   --uninstall      take those settings back out again
   --dry-run        say what would change, change nothing
-  -h, --help       this
+  -h, --help       show this help
 USAGE
 }
 
@@ -48,7 +48,7 @@ block() {
     echo "$END"
 }
 
-# Drop our own block and keep every other line. A block is only a block once
+# Drop the flower-cursor block and keep every other line. A block is only a block once
 # its end marker turns up: if the user has removed or reflowed that line, the
 # held-back lines are printed again rather than swallowed, because otherwise a
 # --uninstall or a second --configure would silently delete the whole remainder
@@ -67,7 +67,7 @@ without_block() {
             if (skip == 1) {
                 printf "%s", held
                 print "install.sh: warning: no end marker after " b " in your kitty.conf;" > "/dev/stderr"
-                print "  leaving those lines alone. Remove them by hand if they are ours." > "/dev/stderr"
+                print "  leaving those lines alone. Remove them by hand if they came from flower-cursor." > "/dev/stderr"
             }
         }
     ' "$KITTY_CONFIG"
@@ -101,7 +101,7 @@ restart_notice() {
     cat << 'NOTICE'
 
 Kitty reads its config when it starts, so restart Kitty (or reload the config
-with ctrl+cmd+, on macOS, ctrl+shift+F5 elsewhere) to see the change. Windows
+with ctrl+cmd+, on macOS, ctrl+shift+f5 elsewhere) to see the change. Windows
 that are already open keep the shell they were started with.
 NOTICE
 }
@@ -145,9 +145,9 @@ else
 fi
 
 if [ "$dry_run" -eq 1 ]; then
-    echo "Would run: uv sync --directory $DIR"
+    echo "Would run: uv sync --directory $DIR --no-dev --inexact"
 else
-    uv sync --directory "$DIR"
+    uv sync --directory "$DIR" --no-dev --inexact
 fi
 
 if [ "$configure" -eq 1 ]; then
