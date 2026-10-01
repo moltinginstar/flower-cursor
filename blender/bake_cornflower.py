@@ -1,4 +1,4 @@
-"""Bake species-specific cornflower layers without changing the coral atlas."""
+"""Bake the cornflower's layers for the runtime."""
 
 from __future__ import annotations
 
@@ -15,19 +15,19 @@ from mathutils import Vector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import bake_layered_flower as baseline
-import create_cornflower_scene as cornflower
-import study_shedding as study
+import bake_layered_flower as anemone_bake
+import cornflower_scene as cornflower
+import shedding_geometry as geometry
 
 ORDER = (1, 7, 3, 9, 5, 11, 0, 6, 2, 8, 4, 10, 12, 15, 13, 16, 14, 17)
 
 
 def main():
-  output = Path(os.environ.get("CORNFLOWER_OUTPUT", "/tmp/flower-cornflower-atlas"))
+  output = Path(os.environ.get("CORNFLOWER_OUTPUT", "/tmp/flower-cursor/cornflower"))
   output.mkdir(parents=True, exist_ok=True)
   selected = set(filter(None, os.environ.get("CORNFLOWER_POSES", "").split(",")))
   records = []
-  for name, pose in baseline.poses():
+  for name, pose in anemone_bake.poses():
     if selected and name not in selected:
       continue
     scene, contact = cornflower.build_scene(pose, output / f"{name}_complete.png")
@@ -38,11 +38,11 @@ def main():
     quaternion = scene.camera.rotation_euler.to_quaternion()
     right = quaternion @ Vector((1, 0, 0)) / scene.camera.data.ortho_scale
     down = quaternion @ Vector((0, -1, 0)) / scene.camera.data.ortho_scale
-    origin = study.head_origin(pose)
+    origin = geometry.head_origin(pose)
     record = {
       "name": name,
       "file": f"{name}_body.png",
-      **study.pose_channels(pose),
+      **geometry.pose_channels(pose),
       **asdict(pose),
       "collapse": pose.collapse,
       "petal_curl": pose.petal_curl,
@@ -67,13 +67,13 @@ def main():
       record["depths"][group] = world_to_camera_view(scene, scene.camera, center).z
       path = output / f"{name}_{group}.png"
       record["layers"][group] = path.name
-      if not path.exists() and study.bakes(group):
+      if not path.exists() and geometry.bakes(group):
         for obj in objects:
           obj.hide_render = obj not in members
         scene.render.filepath = str(path)
         bpy.ops.render.render(write_still=True)
     records.append(record)
-    print(f"CORNFLOWER LAYERED {name}", flush=True)
+    print(f"cornflower {name}", flush=True)
   if not records:
     raise ValueError("no requested cornflower poses matched")
   manifest = {

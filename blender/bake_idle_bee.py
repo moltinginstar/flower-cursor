@@ -1,4 +1,4 @@
-"""Author the independent idle visitor; never loads or rewrites flower artwork."""
+"""Bake the bee's frames. It never touches the flower artwork."""
 
 from __future__ import annotations
 
@@ -348,11 +348,9 @@ def main():
   if not selection:
     pose(scene, rig, wings, legs, 15, 0)
     bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / "blender/idle_bee.blend"))
-  # A partial bake re-renders a few frames beside the ones already on disk, so
-  # it has to merge into the manifest rather than replace it. OUTPUT defaults
-  # to the shipped asset directory, and bee.py reads contacts["0"]["anchor"]
-  # at import: a wholesale rewrite from `BEE_POSES=3,4` would leave contacts
-  # empty and break the package for everyone.
+  # A partial bake merges into the manifest rather than replacing it. OUTPUT
+  # defaults to the shipped assets, and bee.py reads contacts["0"]["anchor"]
+  # at import, so dropping the other frames' contacts would break the package.
   manifest_path = OUTPUT / "manifest.json"
   previous = {}
   if (selection or heading_selection) and manifest_path.exists():

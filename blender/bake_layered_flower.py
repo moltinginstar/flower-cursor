@@ -1,4 +1,4 @@
-"""Bake independently compositable geometry for the interactive shedding demo."""
+"""Bake the anemone's layers for the runtime."""
 
 from __future__ import annotations
 
@@ -15,13 +15,13 @@ from mathutils import Vector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import study_shedding as study
+import shedding_geometry as geometry
 from entry_poses import growth_idle_poses
 
 from flower_cursor.lifecycle import CursorCell, FlowerInstance
 from flower_cursor.shedding import SheddingFlower
 
-OUTPUT = Path(os.environ.get("FLOWER_LAYER_DIR", "/tmp/flower-layered-v1"))
+OUTPUT = Path(os.environ.get("FLOWER_LAYER_DIR", "/tmp/flower-cursor/anemone"))
 
 
 def poses():
@@ -45,36 +45,36 @@ def group_name(obj):
 
 def main():
   OUTPUT.mkdir(parents=True, exist_ok=True)
-  authored = study.authored
-  authored.RENDER_DIR = OUTPUT
-  authored.stem_point = study.stem_point
+  anemone = geometry.anemone
+  anemone.RENDER_DIR = OUTPUT
+  anemone.stem_point = geometry.stem_point
   selection = set(filter(None, os.environ.get("FLOWER_LAYER_POSES", "").split(",")))
   records = []
   for name, pose in poses():
     if selection and name not in selection:
       continue
-    authored.POSES[name] = study.pose_channels(pose)
-    scene = authored.build_scene(name)
-    rot = authored.smoothstep((0.10 - pose.vitality) / 0.08)
-    stem_rot = authored.smoothstep((0.07 - pose.vitality) / 0.05)
-    leaf_rot = authored.smoothstep((0.24 - pose.vitality) / 0.21)
-    browning = authored.smoothstep((0.22 - pose.vitality) / 0.195)
+    anemone.POSES[name] = geometry.pose_channels(pose)
+    scene = anemone.build_scene(name)
+    rot = anemone.smoothstep((0.10 - pose.vitality) / 0.08)
+    stem_rot = anemone.smoothstep((0.07 - pose.vitality) / 0.05)
+    leaf_rot = anemone.smoothstep((0.24 - pose.vitality) / 0.21)
+    browning = anemone.smoothstep((0.22 - pose.vitality) / 0.195)
     objects = [o for o in scene.objects if o.type in {"MESH", "CURVE"}]
-    origin = study.head_origin(pose)
+    origin = geometry.head_origin(pose)
     for obj in objects:
       if obj.type == "CURVE":
         obj.data.bevel_depth *= (1.0 - stem_rot) ** 1.2
       if group_name(obj) == "head":
-        study.scale_mesh(obj, origin, 1.0 - rot)
+        geometry.scale_mesh(obj, origin, 1.0 - rot)
       elif obj.name.startswith("Leaf_"):
         obj.scale *= 1.0 - leaf_rot
     for material_name in ("Living stem", "Leaf surface", "Sepal green"):
       mat = bpy.data.materials.get(material_name)
       if mat is not None:
         color = tuple(mat.diffuse_color)
-        tinted = study.browned(color, browning, (0.12, 0.075, 0.035))
+        tinted = geometry.browned(color, browning, (0.12, 0.075, 0.035))
         mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = tinted
-    study.expand_canvas(scene)
+    geometry.expand_canvas(scene)
     bpy.context.view_layer.update()
     head = world_to_camera_view(scene, scene.camera, origin)
     root = world_to_camera_view(scene, scene.camera, Vector())
@@ -84,7 +84,7 @@ def main():
     record = {
       "name": name,
       "file": f"{name}_body.png",
-      **authored.POSES[name],
+      **anemone.POSES[name],
       **asdict(pose),
       "collapse": pose.collapse,
       "petal_curl": pose.petal_curl,
@@ -103,21 +103,19 @@ def main():
       record["depths"][group] = world_to_camera_view(scene, scene.camera, center).z
       path = OUTPUT / f"{name}_{group}.png"
       record["layers"][group] = path.name
-      if not path.exists() and study.bakes(group):
+      if not path.exists() and geometry.bakes(group):
         for obj in objects:
           obj.hide_render = obj not in members
         scene.render.filepath = str(path)
         bpy.ops.render.render(write_still=True)
     records.append(record)
-    print(f"LAYERED {name}", flush=True)
+    print(f"anemone {name}", flush=True)
   if not records:
     raise ValueError(
       f"FLOWER_LAYER_POSES={','.join(sorted(selection))} matched no pose; "
       f"known poses are {', '.join(name for name, _ in poses())}"
     )
-  # A selective bake renders a few poses beside the ones already on disk, so it
-  # merges into the manifest rather than replacing it. Writing only the
-  # selected records would leave every other rendered pose unreachable.
+  # A selective bake merges into the manifest, so the other poses stay reachable.
   destination = OUTPUT / "manifest.json"
   previous = json.loads(destination.read_text()) if selection and destination.exists() else {}
   rebaked = {record["name"]: record for record in records}

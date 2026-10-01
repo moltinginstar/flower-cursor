@@ -1,4 +1,7 @@
-"""Author the cornflower without touching the anemone or bee assets."""
+"""The cornflower, built in Blender from the lifecycle's pose channels.
+
+Run on its own, it renders three checkpoints and saves the idle scene.
+"""
 
 from __future__ import annotations
 
@@ -13,8 +16,8 @@ from mathutils import Vector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import create_flower_scene as base
-import study_shedding as study
+import anemone_scene as base
+import shedding_geometry as geometry
 
 from flower_cursor.lifecycle import CursorCell, FlowerInstance
 from flower_cursor.shedding import SheddingFlower
@@ -107,8 +110,8 @@ def floret(name, start, axis, size, materials, layer, phase):
 
 def build_scene(pose, path):
   base.clear_scene()
-  values = study.pose_channels(pose)
-  origin = study.head_origin(pose)
+  values = geometry.pose_channels(pose)
+  origin = geometry.head_origin(pose)
   opening = base.smoothstep(values["petal_open"])
   head_scale = 0.28 + 0.72 * base.smoothstep(pose.stem)
   vitality = pose.vitality
@@ -136,7 +139,7 @@ def build_scene(pose, path):
     pigment("Involucre margins", (0.29, 0.23, 0.10)),
   )
   anther = pigment("Pale blue anthers", (0.39, 0.40, 0.67), transmission=0.02)
-  base.stem_point = study.stem_point
+  base.stem_point = geometry.stem_point
   base.add_stem(greens[0], pose.stem, pose.stem_bend, pose.head_lean, values["collapse"])
   stem = bpy.data.objects["Living stem"]
   stem["layer"] = "body"
@@ -146,7 +149,7 @@ def build_scene(pose, path):
   for index, (height, sign) in enumerate(((0.34, -1), (0.58, 1), (0.77, -1))):
     unfurl = base.clamp01((values["leaf_unfurl"] - index * 0.12) / (1 - index * 0.12))
     leaf_size = unfurl * pose.stem * (1 - leaf_rot)
-    attachment = study.stem_point(height, pose.stem, pose.stem_bend, pose.head_lean, values["collapse"])
+    attachment = geometry.stem_point(height, pose.stem, pose.stem_bend, pose.head_lean, values["collapse"])
     direction = (RIGHT * sign * 0.84 + Vector((0, 0, 0.54 - values["droop"] * 1.1))).normalized()
     ribbon(
       f"Leaf_{index}",
@@ -202,11 +205,11 @@ def build_scene(pose, path):
   for obj in bpy.context.scene.objects:
     if obj.type == "MESH" and obj.get("layer") != "body":
       factor = head_scale * (1 - rot if obj.get("layer") == "head" else 1)
-      study.scale_mesh(obj, origin, factor)
+      geometry.scale_mesh(obj, origin, factor)
   base.add_camera()
   base.add_lights()
   scene = base.configure_render(path)
-  study.expand_canvas(scene)
+  geometry.expand_canvas(scene)
   scene.render.threads_mode = "FIXED"
   scene.render.threads = 4
   contact = origin + NORMAL * (0.34 * head_scale)
@@ -214,7 +217,7 @@ def build_scene(pose, path):
 
 
 def main():
-  output = Path(os.environ.get("CORNFLOWER_OUTPUT", "/tmp/flower-cornflower-pilot"))
+  output = Path(os.environ.get("CORNFLOWER_OUTPUT", "/tmp/flower-cursor/cornflower-scene"))
   output.mkdir(parents=True, exist_ok=True)
   flower = SheddingFlower(FlowerInstance.bud(1, CursorCell(0, 0)))
   flower.update(0.20)
@@ -229,7 +232,7 @@ def main():
     if name == "idle":
       bpy.ops.wm.save_as_mainfile(filepath=str(output / "cornflower.blend"))
     bpy.ops.render.render(write_still=True)
-    print(f"CORNFLOWER PILOT {name}", flush=True)
+    print(f"cornflower {name}", flush=True)
 
 
 if __name__ == "__main__":

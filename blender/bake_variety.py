@@ -1,4 +1,4 @@
-"""Bake the newer species into the layered runtime format."""
+"""Bake the daisy, crocus, poppy, dahlia and orchid layers for the runtime."""
 
 from __future__ import annotations
 
@@ -15,16 +15,16 @@ from mathutils import Vector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import bake_layered_flower as baseline
-import create_variety_scene as variety
-import study_shedding as study
+import bake_layered_flower as anemone_bake
+import shedding_geometry as geometry
+import variety_scene as variety
 
 
 def bake(kind, output, selected):
   output.mkdir(parents=True, exist_ok=True)
   count = variety.GROUP_COUNTS[kind]
   records = []
-  for name, pose in baseline.poses():
+  for name, pose in anemone_bake.poses():
     if selected and name not in selected:
       continue
     scene, contact = variety.build_scene(kind, pose, output / f"{name}_complete.png")
@@ -38,7 +38,7 @@ def bake(kind, output, selected):
     record = {
       "name": name,
       "file": f"{name}_body.png",
-      **study.pose_channels(pose),
+      **geometry.pose_channels(pose),
       **asdict(pose),
       "collapse": pose.collapse,
       "petal_curl": pose.petal_curl,
@@ -52,18 +52,18 @@ def bake(kind, output, selected):
     for group in ("complete", "body", "head", *(f"petal_{i}" for i in range(count))):
       members = objects if group == "complete" else [o for o in objects if o["layer"] == group]
       vertices = [o.matrix_world @ v.co for o in members if o.type == "MESH" for v in o.data.vertices]
-      center = sum(vertices, Vector()) / len(vertices) if vertices else study.head_origin(pose)
+      center = sum(vertices, Vector()) / len(vertices) if vertices else geometry.head_origin(pose)
       record["centers"][group] = list(center)
       record["depths"][group] = world_to_camera_view(scene, scene.camera, center).z
       path = output / f"{name}_{group}.png"
       record["layers"][group] = path.name
-      if not path.exists() and study.bakes(group):
+      if not path.exists() and geometry.bakes(group):
         for obj in objects:
           obj.hide_render = obj not in members
         scene.render.filepath = str(path)
         bpy.ops.render.render(write_still=True)
     records.append(record)
-    print(f"VARIETY LAYERED {kind} {name} ({len(records)}/135)", flush=True)
+    print(f"{kind} {name} ({len(records)}/135)", flush=True)
   if not records:
     raise ValueError(f"no requested {kind} poses matched")
   order = list(range(1, count, 2)) + list(range(0, count, 2))
@@ -84,7 +84,7 @@ def bake(kind, output, selected):
 
 
 def main():
-  root = Path(os.environ.get("VARIETY_OUTPUT", "/tmp/flower-variety-atlas"))
+  root = Path(os.environ.get("VARIETY_OUTPUT", "/tmp/flower-cursor"))
   selected = set(filter(None, os.environ.get("VARIETY_POSES", "").split(",")))
   for kind in os.environ.get("VARIETY_SPECIES", ",".join(variety.GROUP_COUNTS)).split(","):
     bake(kind, root / kind, selected)

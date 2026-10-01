@@ -1,4 +1,7 @@
-"""Still studies of candidate species, at the runtime camera and caret scale."""
+"""Each species' geometry and materials.
+
+Run on its own, it renders a still of each grown flower and saves its scene.
+"""
 
 from __future__ import annotations
 
@@ -13,17 +16,17 @@ from mathutils import Vector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import anemone_scene as base
 import bake_idle_bee as bee_authoring
-import create_cornflower_scene as cornflower
-import create_flower_scene as base
-import study_shedding as study
+import cornflower_scene as cornflower
+import shedding_geometry as geometry
 
 from flower_cursor.lifecycle import CursorCell, FlowerInstance
 
 NORMAL = cornflower.NORMAL
 RIGHT = cornflower.RIGHT
 ACROSS = cornflower.ACROSS
-OPTIONS = ("daisy", "crocus", "poppy", "cosmos", "dahlia", "orchid")
+SPECIES = ("daisy", "crocus", "poppy", "dahlia", "orchid")
 
 
 def pigment(name, color, roughness=0.43, transmission=0.16):
@@ -54,21 +57,17 @@ def disc(origin, radius, depth, mats, count=91):
     sphere(f"Disc floret {index}", center, radius * 0.085, mats[index % len(mats)], flatten=1.3)
 
 
-def petal(name, origin, angle, length, width, cup, mats, *, form="round", ripple=0.008):
+def petal(name, origin, angle, length, width, cup, mats, *, ripple=0.008):
   radial = RIGHT * math.cos(angle) + ACROSS * math.sin(angle)
   tangent = -RIGHT * math.sin(angle) + ACROSS * math.cos(angle)
   vertices, faces, shades = [], [], []
   rows, columns = 29, 17
   for row in range(rows):
     t = row / (rows - 1)
-    if form == "fan":
-      profile = math.sin(math.pi * 0.5 * t) ** 0.68 * (1 - 0.12 * t)
-    else:
-      profile = math.sin(math.pi * (0.01 + 0.985 * t)) ** 0.55
+    profile = math.sin(math.pi * (0.01 + 0.985 * t)) ** 0.55
     for column in range(columns):
       u = column * 2 / (columns - 1) - 1
-      notch = t**6 * (0.065 * u * u + 0.10 * (1 - u * u) ** 8) if form == "fan" else 0
-      spread = length * t - notch
+      spread = length * t
       elevation = cup * t**1.7 + 0.026 * u * u * math.sin(math.pi * t)
       crease = ripple * math.sin(t * 17 + u * 13 + angle) * t * t
       crease += ripple * 0.5 * math.cos(u * 19) * math.sin(math.pi * t)
@@ -120,37 +119,6 @@ def lamina(name, start, direction, length, width, mats, form, *, normal=NORMAL):
   obj.modifiers.new("Leaf tissue", "SOLIDIFY").thickness = 0.003
   obj["leaf_anchor"] = list(start)
   return obj
-
-
-def divided_leaf(name, start, direction, length, mats):
-  side = NORMAL.cross(direction).normalized()
-  end = start + direction * length
-  base.add_cylinder_between(name + " rachis", start, end, 0.005, mats[0], vertices=6)
-  for index in range(5):
-    t = 0.20 + index * 0.145
-    attachment = start + direction * (length * t)
-    for sign in (-1, 1):
-      pinna = (direction * 0.46 + side * sign * 0.88).normalized()
-      pinna_length = length * (0.45 - 0.23 * t)
-      pinna_end = attachment + pinna * pinna_length
-      label = f"{name} pinna {index} {sign}"
-      base.add_cylinder_between(label, attachment, pinna_end, 0.0035, mats[0], vertices=6)
-      for segment in range(3):
-        sub_start = attachment + pinna * (pinna_length * (0.28 + segment * 0.23))
-        for branch in (-1, 1):
-          sub_direction = (pinna * 0.62 + direction * branch * 0.57).normalized()
-          cornflower.ribbon(
-            f"{label} division {segment} {branch}",
-            sub_start,
-            sub_direction,
-            side,
-            NORMAL,
-            pinna_length * (0.46 - segment * 0.07),
-            0.009,
-            -0.008,
-            mats,
-            "body",
-          )
 
 
 def poppy_leaf(name, start, direction, petiole_length, length, width, mats, phase):
@@ -206,21 +174,19 @@ def leaves(kind, pose):
     for index, (sign, length, rise) in enumerate(
       ((-1, 0.95, 0.32), (1, 0.82, 0.42), (-1, 0.74, 0.67), (1, 1.02, 0.23))
     ):
-      start = study.stem_point(0.012 + index * 0.009, pose.stem, pose.stem_bend, pose.head_lean)
+      start = geometry.stem_point(0.012 + index * 0.009, pose.stem, pose.stem_bend, pose.head_lean)
       direction = (RIGHT * sign + up * rise).normalized()
       obj = lamina(f"Mottled orchid blade {index}", start, direction, length, 0.145, mottled, "strap")
       for polygon in obj.data.polygons:
         polygon.material_index = 0
   elif kind == "dahlia":
     for node, height in enumerate((0.32, 0.57)):
-      start = study.stem_point(height, pose.stem, pose.stem_bend, pose.head_lean)
+      start = geometry.stem_point(height, pose.stem, pose.stem_bend, pose.head_lean)
       for sign in (-1, 1):
         direction = (RIGHT * sign * 0.80 + up * 0.60).normalized()
         junction = start + direction * 0.24
-        # Every part of the leaf carries its node index, because the
-        # whole leaf has to travel with the one stem height it grows
-        # from. A reader cannot recover it from the name: the lateral
-        # leaflets carry a trailing branch token and the others do not.
+        # The whole leaf moves with the stem height it grows from, so each
+        # part records which one; the names don't say.
         parts = [
           base.add_cylinder_between(
             f"Dahlia leaf rachis {node} {sign}",
@@ -261,7 +227,7 @@ def leaves(kind, pose):
     for index, (sign, spread, length) in enumerate(
       ((-1, 0.32, 1.48), (1, 0.25, 1.20), (-1, 0.12, 1.70), (1, 0.41, 1.36))
     ):
-      start = study.stem_point(0.015 + index * 0.004, pose.stem, pose.stem_bend, pose.head_lean)
+      start = geometry.stem_point(0.015 + index * 0.004, pose.stem, pose.stem_bend, pose.head_lean)
       direction = (RIGHT * sign * spread + up).normalized()
       lamina(
         f"Basal crocus blade {index}",
@@ -282,7 +248,7 @@ def leaves(kind, pose):
         (0.57, 0.58, 0.38, 0.29, 0.39, 0.10),
       )
     ):
-      start = study.stem_point(0.008 + index * 0.006, pose.stem, pose.stem_bend, pose.head_lean)
+      start = geometry.stem_point(0.008 + index * 0.006, pose.stem, pose.stem_bend, pose.head_lean)
       direction = (RIGHT * horizontal + forward * depth + up * rise).normalized()
       poppy_leaf(
         f"Basal poppy leaf {index}",
@@ -294,18 +260,6 @@ def leaves(kind, pose):
         greens,
         index * 1.7,
       )
-  elif kind == "cosmos":
-    for node, height in enumerate((0.34, 0.60)):
-      start = study.stem_point(height, pose.stem, pose.stem_bend, pose.head_lean)
-      for sign in (-1, 1):
-        direction = (RIGHT * sign * 0.84 + up * 0.54).normalized()
-        divided_leaf(
-          f"Opposite cosmos leaf {node} {sign}",
-          start,
-          direction,
-          0.62 - node * 0.13,
-          greens,
-        )
   else:
     for index, (height, sign, length, width, form) in enumerate(
       (
@@ -315,7 +269,7 @@ def leaves(kind, pose):
         (0.60, 1, 0.45, 0.08, "lobed"),
       )
     ):
-      start = study.stem_point(height, pose.stem, pose.stem_bend, pose.head_lean)
+      start = geometry.stem_point(height, pose.stem, pose.stem_bend, pose.head_lean)
       direction = (RIGHT * sign * 0.87 + up * 0.49).normalized()
       lamina(f"Daisy {form} leaf {index}", start, direction, length, width, greens, form)
   return greens[0]
@@ -396,30 +350,6 @@ def poppy(origin):
     base.add_cylinder_between(f"Poppy filament {i}", origin + radial * 0.06, end, 0.007, pollen, vertices=6)
     sphere(f"Poppy anther {i}", end, 0.022, pollen)
   sphere("Poppy ovary", origin + NORMAL * 0.105, 0.075, green, flatten=1.2)
-
-
-def cosmos(origin):
-  pink = (
-    pigment("Magenta satin", (0.65, 0.025, 0.18)),
-    pigment("Pink veins", (0.86, 0.075, 0.27)),
-  )
-  for i in range(8):
-    petal(
-      f"Cosmos ray {i}",
-      origin,
-      math.tau * i / 8 + 0.10,
-      0.79,
-      0.27,
-      0.09 + 0.03 * math.sin(i * 2),
-      pink,
-      form="fan",
-      ripple=0.013,
-    )
-  gold = (
-    pigment("Cosmos ochre", (0.75, 0.30, 0.015)),
-    pigment("Cosmos gold", (0.98, 0.61, 0.035)),
-  )
-  disc(origin + NORMAL * 0.045, 0.15, 0.07, gold, count=61)
 
 
 def dahlia(origin):
@@ -539,62 +469,33 @@ def orchid(origin):
   )
 
 
-def bellflower(origin):
-  blue = (pigment("Violet bell", (0.16, 0.12, 0.57)), pigment("Bell ridges", (0.29, 0.24, 0.77)))
-  vertices, faces, shades = [], [], []
-  rows, columns = 25, 100
-  for row in range(rows):
-    t = row / (rows - 1)
-    for column in range(columns):
-      angle = math.tau * column / columns
-      lobe = 0.5 + 0.5 * math.cos(5 * angle)
-      radius = 0.065 + 0.35 * t**1.65 + 0.14 * lobe * t**7
-      depth = 0.47 * t - 0.13 * (1 - lobe) * t**8
-      radial = RIGHT * math.cos(angle) + ACROSS * math.sin(angle)
-      radius *= 1 + 0.018 * math.sin(t * 9 + angle * 3)
-      vertices.append(origin + NORMAL * depth + radial * radius)
-  for row in range(rows - 1):
-    for column in range(columns):
-      a, b = row * columns + column, row * columns + (column + 1) % columns
-      faces.append((a, b, b + columns, a + columns))
-      shades.append(1 if column % 20 < 3 else 0)
-  obj = cornflower.mesh_object("Five-lobed fused bell", vertices, faces, blue, "head", shades)
-  obj.modifiers.new("Bell tissue", "SOLIDIFY").thickness = 0.006
-  ivory = pigment("Bellflower pistil", (0.68, 0.72, 0.58))
-  end = origin + NORMAL * 0.39
-  base.add_cylinder_between("Bellflower style", origin, end, 0.014, ivory)
-  for i in range(3):
-    radial = RIGHT * math.cos(math.tau * i / 3) + ACROSS * math.sin(math.tau * i / 3)
-    base.add_cylinder_between(f"Bellflower stigma {i}", end, end + radial * 0.045 + NORMAL * 0.025, 0.014, ivory)
-
-
 def main():
-  output = Path(os.environ.get("FLOWER_OPTIONS_OUTPUT", "/tmp/flower-static-options"))
+  output = Path(os.environ.get("FLOWER_STILLS_OUTPUT", "/tmp/flower-cursor/stills"))
   output.mkdir(parents=True, exist_ok=True)
   flower = FlowerInstance.bud(1, CursorCell(0, 0))
   flower.update(8)
   pose = flower.pose
-  selected = os.environ.get("FLOWER_OPTIONS", ",".join(OPTIONS)).split(",")
+  selected = os.environ.get("FLOWER_STILLS", ",".join(SPECIES)).split(",")
   for kind in selected:
-    if kind not in OPTIONS:
-      raise ValueError(f"unknown static design: {kind}")
+    if kind not in SPECIES:
+      raise ValueError(f"unknown species: {kind}")
     base.clear_scene()
     stem_mat = leaves(kind, pose)
-    base.stem_point = study.stem_point
+    base.stem_point = geometry.stem_point
     base.add_stem(stem_mat, pose.stem, pose.stem_bend, pose.head_lean, 0)
     bpy.data.objects["Living stem"].data.bevel_depth = 0.038
-    origin = study.head_origin(pose)
+    origin = geometry.head_origin(pose)
     globals()[kind](origin)
     base.add_camera()
     base.add_lights()
     scene = base.configure_render(output / f"{kind}.png")
-    study.expand_canvas(scene)
+    geometry.expand_canvas(scene)
     scene.render.resolution_x = scene.render.resolution_y = 1024
     scene.render.threads_mode = "FIXED"
     scene.render.threads = 4
     bpy.ops.wm.save_as_mainfile(filepath=str(output / f"{kind}.blend"))
     bpy.ops.render.render(write_still=True)
-    print(f"STATIC DESIGN {kind}", flush=True)
+    print(kind, flush=True)
 
 
 if __name__ == "__main__":

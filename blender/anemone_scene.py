@@ -1,25 +1,13 @@
-"""Build and render parameterized, translucent flower-cursor poses."""
+"""The anemone, built in Blender from the lifecycle's pose channels."""
 
 from __future__ import annotations
 
-import json
 import math
-import os
-import sys
-from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
 import bpy
-from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from flower_cursor.lifecycle import CursorCell, FlowerInstance
-
-ROOT = Path(__file__).resolve().parents[1]
-BLEND_PATH = Path(os.environ.get("FLOWER_BLEND_PATH", str(ROOT / "blender" / "flower_cursor.blend")))
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,52 +27,28 @@ class FlowerStyle:
   leaf_width: float = 0.34
 
 
-STYLES = {
-  "coral_anemone": FlowerStyle(
-    name="coral_anemone",
-    petal_colors=(
-      (0.78, 0.12, 0.19, 0.94),
-      (0.95, 0.29, 0.27, 0.90),
-      (0.59, 0.055, 0.12, 0.96),
-    ),
-    center_color=(0.16, 0.055, 0.028, 1.0),
-    filament_color=(1.00, 0.76, 0.18, 1.0),
-    stem_color=(0.06, 0.26, 0.09, 1.0),
-    leaf_color=(0.10, 0.42, 0.13, 0.94),
-    petal_profile="round",
-    leaf_profile="lance",
-    petal_count=6,
-    petal_length=0.61,
-    petal_width=0.42,
-    leaf_length=0.76,
-    leaf_width=0.34,
+STYLE = FlowerStyle(
+  name="anemone",
+  petal_colors=(
+    (0.78, 0.12, 0.19, 0.94),
+    (0.95, 0.29, 0.27, 0.90),
+    (0.59, 0.055, 0.12, 0.96),
   ),
-  "violet_cosmos": FlowerStyle(
-    name="violet_cosmos",
-    petal_colors=(
-      (0.42, 0.18, 0.86, 0.80),
-      (0.68, 0.34, 1.00, 0.72),
-      (0.28, 0.08, 0.64, 0.84),
-    ),
-    center_color=(0.95, 0.55, 0.08, 1.0),
-    filament_color=(1.00, 0.82, 0.22, 1.0),
-    stem_color=(0.06, 0.22, 0.12, 1.0),
-    leaf_color=(0.12, 0.40, 0.18, 0.92),
-    petal_profile="pointed",
-    leaf_profile="fern",
-    petal_count=9,
-    petal_length=0.88,
-    petal_width=0.28,
-    leaf_length=0.86,
-    leaf_width=0.27,
-  ),
-}
-
-STYLE_NAME = os.environ.get("FLOWER_STYLE", "coral_anemone")
-STYLE = STYLES.get(STYLE_NAME, STYLES["coral_anemone"])
-RENDER_DIR = Path(os.environ.get("FLOWER_RENDER_DIR", str(ROOT / "assets" / "renders")))
-MANIFEST_PATH = Path(os.environ.get("FLOWER_MANIFEST_PATH", str(ROOT / "assets" / "renders" / "manifest.json")))
-SAVE_BLEND = os.environ.get("FLOWER_SAVE_BLEND", "1") != "0"
+  center_color=(0.16, 0.055, 0.028, 1.0),
+  filament_color=(1.00, 0.76, 0.18, 1.0),
+  stem_color=(0.06, 0.26, 0.09, 1.0),
+  leaf_color=(0.10, 0.42, 0.13, 0.94),
+  petal_profile="round",
+  leaf_profile="lance",
+  petal_count=6,
+  petal_length=0.61,
+  petal_width=0.42,
+  leaf_length=0.76,
+  leaf_width=0.34,
+)
+# The bakes point this at their output and fill POSES before each build_scene.
+RENDER_DIR = Path("/tmp/flower-cursor/anemone")
+POSES: dict[str, dict[str, float]] = {}
 
 
 def clamp01(value: float) -> float:
@@ -124,106 +88,6 @@ def channels(
     "petal_curl": smoothstep((0.86 - vitality) / 0.76),
     "retraction": smoothstep((0.038 - vitality) / 0.018),
   }
-
-
-def sampled_channels(flower: FlowerInstance) -> dict[str, float]:
-  pose = flower.pose
-  result = channels(pose.stem, pose.bloom, pose.vitality, 1.0 - pose.vitality)
-  for name in (
-    "bud_size",
-    "leaf_unfurl",
-    "petal_open",
-    "head_lean",
-    "stem_bend",
-    "idle_phase",
-    "maturity",
-    "collapse",
-    "petal_curl",
-    "retraction",
-  ):
-    result[name] = getattr(pose, name)
-  result["stem_length"] = pose.stem
-  return result
-
-
-POSES: dict[str, dict[str, float]] = {"mature": channels(1.0, 1.0, 1.0, 0.0)}
-flower = FlowerInstance.bud(1, CursorCell(0, 0))
-interruptions = {}
-for index in range(1, 37):
-  for _ in range(5):
-    flower.update(1 / 120)
-  POSES[f"bloom_{index:02d}"] = sampled_channels(flower)
-  if index in (6, 13, 22):
-    interruptions[f"partial_{index:02d}"] = deepcopy(flower)
-POSES["bud"] = POSES["bloom_01"]
-POSES["bloom"] = POSES["bloom_22"]
-flower.update(3.0)
-interruptions["wilt"] = flower
-revivals = {}
-for prefix, departure in interruptions.items():
-  departure.begin_withering()
-  for index in range(1, 81):
-    for _ in range(2):
-      departure.update(1 / 120)
-    suffix = f"{index // 2:02d}" + ("_half" if index % 2 else "")
-    POSES[f"{prefix}_{suffix}"] = sampled_channels(departure)
-    if index == 28:
-      revivals[prefix] = deepcopy(departure)
-    if index == 54 and prefix in ("wilt", "partial_22"):
-      revivals[f"late_{prefix}"] = deepcopy(departure)
-POSES["wilt"] = POSES["wilt_40"]
-for prefix, returning in revivals.items():
-  returning.restore()
-  for index in range(1, 73):
-    for _ in range(2):
-      returning.update(1 / 120)
-    suffix = f"{index // 2:02d}" + ("_half" if index % 2 else "")
-    POSES[f"revive_{prefix}_{suffix}"] = sampled_channels(returning)
-for index in range(24):
-  phase = 2 * math.pi * index / 24
-  idle = channels(1.0, 1.0, 1.0, 0.0, idle_phase=phase, idle_lean=0.065 * math.sin(phase))
-  idle["petal_open"] = 1.0 - 0.012 * (1.0 - math.cos(phase))
-  idle["leaf_unfurl"] = 0.98 + 0.02 * math.cos(phase + 0.4)
-  POSES[f"mature_idle_{index:02d}"] = idle
-
-
-def write_manifest() -> None:
-  scene = bpy.context.scene
-  root = world_to_camera_view(scene, scene.camera, Vector((0.0, 0.0, 0.0)))
-  entries = []
-  for name, pose in POSES.items():
-    entries.append(
-      {
-        "name": name,
-        "stem": pose["stem"],
-        "stem_length": pose.get("stem_length", pose["stem"]),
-        "bloom": pose["bloom"],
-        "vitality": pose["vitality"],
-        "bud_size": pose["bud_size"],
-        "leaf_unfurl": pose["leaf_unfurl"],
-        "petal_open": pose["petal_open"],
-        "head_lean": pose["head_lean"],
-        "stem_bend": pose["stem_bend"],
-        "maturity": pose["maturity"],
-        "collapse": pose["collapse"],
-        "petal_curl": pose["petal_curl"],
-        "retraction": pose["retraction"],
-        "file": f"flower_{name}.png",
-        **({"idle_phase": pose["idle_phase"]} if "idle_phase" in pose else {}),
-      }
-    )
-  MANIFEST_PATH.parent.mkdir(parents=True, exist_ok=True)
-  MANIFEST_PATH.write_text(
-    json.dumps(
-      {
-        "style": STYLE.name,
-        "root_anchor": [root.x, 1.0 - root.y],
-        "poses": entries,
-      },
-      indent=2,
-    )
-    + "\n"
-  )
 
 
 def clear_scene() -> None:
@@ -780,34 +644,3 @@ def build_scene(pose_name: str) -> bpy.types.Scene:
   add_camera()
   add_lights()
   return configure_render(render_path)
-
-
-def main(pose_name: str) -> None:
-  scene = build_scene(pose_name)
-  render_path = Path(scene.render.filepath)
-  if pose_name == "mature" and SAVE_BLEND:
-    bpy.ops.wm.save_as_mainfile(filepath=str(BLEND_PATH), check_existing=False)
-  write_manifest()
-  bpy.ops.render.render(write_still=True)
-  print(
-    {
-      "pose": pose_name,
-      "style": STYLE.name,
-      "render_path": str(render_path),
-      "blend_path": str(BLEND_PATH),
-      "resolution": [scene.render.resolution_x, scene.render.resolution_y],
-      "engine": scene.render.engine,
-      "transparent": scene.render.film_transparent,
-      "objects": len(bpy.context.scene.objects),
-    }
-  )
-
-
-if __name__ == "__main__":
-  requested = os.environ.get("FLOWER_POSES", "")
-  for pose_name in (
-    (list(POSES) if requested == "all" else requested.split(","))
-    if requested
-    else [globals().get("FLOWER_POSE", os.environ.get("FLOWER_POSE", "mature"))]
-  ):
-    main(pose_name)

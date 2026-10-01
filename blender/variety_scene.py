@@ -1,4 +1,7 @@
-"""Animate the species studies through the shared continuous pose channels."""
+"""The other species, built from `species_art` and posed through the lifecycle's channels.
+
+Run on its own, it renders three checkpoints of each and saves the idle scenes.
+"""
 
 from __future__ import annotations
 
@@ -13,9 +16,9 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import create_flower_scene as base
-import render_flower_options as art
-import study_shedding as study
+import anemone_scene as base
+import shedding_geometry as geometry
+import species_art as art
 
 from flower_cursor.lifecycle import FlowerInstance
 from flower_cursor.runtime import CursorCell
@@ -81,37 +84,35 @@ def build_scene(kind, pose, path):
   base.clear_scene()
   bpy.data.orphans_purge(do_recursive=True)
   reference = mature_pose()
-  values = study.pose_channels(pose)
-  source_origin = study.head_origin(reference)
+  values = geometry.pose_channels(pose)
+  source_origin = geometry.head_origin(reference)
   stalk_pose = replace(pose, stem=pose.stem * 0.955) if kind == "crocus" else pose
-  origin = study.head_origin(stalk_pose)
+  origin = geometry.head_origin(stalk_pose)
   stem_mat = art.leaves(kind, reference)
   leaves = list(bpy.context.scene.objects)
   leaf_rot = base.smoothstep((0.24 - pose.vitality) / 0.21)
   leaf_size = base.clamp01(values["leaf_unfurl"]) * pose.stem * (1 - leaf_rot)
   source_stem = [
-    study.stem_point(t / 200, reference.stem, reference.stem_bend, reference.head_lean) for t in range(201)
+    geometry.stem_point(t / 200, reference.stem, reference.stem_bend, reference.head_lean) for t in range(201)
   ]
   for obj in leaves:
     if kind == "dahlia":
-      # The node index is read from the property the art module stamps on
-      # each leaf part, not from the name: the lateral leaflets end in a
-      # branch token, so the old name[-2] lookup read the sign instead and
-      # lifted every node-0 lateral leaflet off its own rachis.
+      # Read from the property `species_art` stamps on each leaf part; the
+      # names don't carry it reliably.
       height = (0.32, 0.57)[obj["leaf_node"]]
-      anchor = study.stem_point(height, reference.stem, reference.stem_bend, reference.head_lean)
+      anchor = geometry.stem_point(height, reference.stem, reference.stem_bend, reference.head_lean)
     else:
       anchor = Vector(obj["leaf_anchor"])
       height = min(range(201), key=lambda i: (source_stem[i] - anchor).length_squared) / 200
-    destination = study.stem_point(height, stalk_pose.stem, pose.stem_bend, pose.head_lean, values["collapse"])
-    reference_attachment = study.stem_point(height, reference.stem, reference.stem_bend, reference.head_lean)
+    destination = geometry.stem_point(height, stalk_pose.stem, pose.stem_bend, pose.head_lean, values["collapse"])
+    reference_attachment = geometry.stem_point(height, reference.stem, reference.stem_bend, reference.head_lean)
     obj = mesh_world(obj)
     obj["layer"] = "body"
     for vertex in obj.data.vertices:
       offset = vertex.co - reference_attachment
       droop = Vector((0, 0, -values["droop"] * 0.24 * offset.length_squared))
       vertex.co = destination + (offset + droop) * leaf_size
-  base.stem_point = study.stem_point
+  base.stem_point = geometry.stem_point
   base.add_stem(stem_mat, stalk_pose.stem, pose.stem_bend, pose.head_lean, values["collapse"])
   stem = bpy.data.objects["Living stem"]
   stem["layer"] = "body"
@@ -156,7 +157,7 @@ def build_scene(kind, pose, path):
   base.add_camera()
   base.add_lights()
   scene = base.configure_render(path)
-  study.expand_canvas(scene)
+  geometry.expand_canvas(scene)
   scene.render.threads_mode = "FIXED"
   scene.render.threads = 4
   contact = head_point(contact, source_origin, origin, opening, head_scale)
@@ -170,7 +171,7 @@ def build_scene(kind, pose, path):
 
 
 def main():
-  output = Path(os.environ.get("VARIETY_OUTPUT", "/tmp/flower-variety-pilot"))
+  output = Path(os.environ.get("VARIETY_OUTPUT", "/tmp/flower-cursor/species-scenes"))
   output.mkdir(parents=True, exist_ok=True)
   selected = os.environ.get("VARIETY_SPECIES", ",".join(GROUP_COUNTS)).split(",")
   flower = SheddingFlower(FlowerInstance.bud(1, CursorCell(0, 0)))
@@ -188,7 +189,7 @@ def main():
       if name == "idle":
         bpy.ops.wm.save_as_mainfile(filepath=str(output / f"{kind}.blend"))
       bpy.ops.render.render(write_still=True)
-      print(f"VARIETY PILOT {kind} {name}", flush=True)
+      print(f"{kind} {name}", flush=True)
 
 
 if __name__ == "__main__":
