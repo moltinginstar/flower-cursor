@@ -22,6 +22,8 @@ from flower_cursor.lifecycle import CursorCell, FlowerInstance
 from flower_cursor.shedding import SheddingFlower
 
 OUTPUT = Path(os.environ.get("FLOWER_LAYER_DIR", "/tmp/flower-cursor/anemone"))
+# Saves the scene of each pose baked, e.g. blender/anemone.blend with FLOWER_LAYER_POSES=idle_00.
+SCENE = os.environ.get("FLOWER_SCENE")
 
 
 def poses():
@@ -76,6 +78,8 @@ def main():
         mat.node_tree.nodes["Principled BSDF"].inputs["Base Color"].default_value = tinted
     geometry.expand_canvas(scene)
     bpy.context.view_layer.update()
+    if SCENE:
+      anemone.save_scene(Path(SCENE).resolve())
     head = world_to_camera_view(scene, scene.camera, origin)
     root = world_to_camera_view(scene, scene.camera, Vector())
     quaternion = scene.camera.rotation_euler.to_quaternion()
