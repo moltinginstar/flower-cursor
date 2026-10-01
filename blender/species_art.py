@@ -493,7 +493,7 @@ def main():
     scene.render.resolution_x = scene.render.resolution_y = 1024
     scene.render.threads_mode = "FIXED"
     scene.render.threads = 4
-    bpy.ops.wm.save_as_mainfile(filepath=str(output / f"{kind}.blend"))
+    base.save_scene(output / f"{kind}.blend")
     bpy.ops.render.render(write_still=True)
     print(kind, flush=True)
 

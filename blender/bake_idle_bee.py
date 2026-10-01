@@ -6,11 +6,16 @@ import json
 import math
 import os
 import random
+import sys
 from pathlib import Path
 
 import bpy
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Vector
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import anemone_scene as anemone
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = Path(os.environ.get("BEE_OUTPUT", ROOT / "src/flower_cursor/assets/bee"))
@@ -347,7 +352,7 @@ def main():
         }
   if not selection:
     pose(scene, rig, wings, legs, 15, 0)
-    bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / "blender/idle_bee.blend"))
+    anemone.save_scene(ROOT / "blender/idle_bee.blend")
   # A partial bake merges into the manifest rather than replacing it. OUTPUT
   # defaults to the shipped assets, and bee.py reads contacts["0"]["anchor"]
   # at import, so dropping the other frames' contacts would break the package.

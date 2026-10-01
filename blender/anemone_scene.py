@@ -531,6 +531,17 @@ def configure_render(render_path: Path) -> bpy.types.Scene:
   return scene
 
 
+def save_scene(path: Path) -> None:
+  """Save the scene alone, without the UI state or paths that would place it on this machine."""
+  scene = bpy.context.scene
+  render_path = scene.render.filepath
+  # The path is saved as its whole fixed-size buffer, so fill it first to leave no old path behind the new one.
+  scene.render.filepath = "/" * 1023
+  scene.render.filepath = f"//{path.stem}"
+  bpy.data.libraries.write(str(path), {scene}, compress=True)
+  scene.render.filepath = render_path
+
+
 def build_scene(pose_name: str) -> bpy.types.Scene:
   if pose_name not in POSES:
     raise ValueError(f"unknown pose: {pose_name}")

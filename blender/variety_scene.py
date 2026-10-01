@@ -187,7 +187,7 @@ def main():
       scene, _ = build_scene(kind, pose, output / f"{kind}-{name}.png")
       scene.render.resolution_x = scene.render.resolution_y = 1024
       if name == "idle":
-        bpy.ops.wm.save_as_mainfile(filepath=str(output / f"{kind}.blend"))
+        base.save_scene(output / f"{kind}.blend")
       bpy.ops.render.render(write_still=True)
       print(f"{kind} {name}", flush=True)
 
