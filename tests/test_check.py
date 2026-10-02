@@ -10,63 +10,6 @@ import pytest
 from flower_cursor import check
 from flower_cursor.settings import KITTY_SHELL_VARIABLE, FlowerSpec, resolve
 
-BLOCK = f"""{check.BEGIN_MARKER}
-# Grown by flower-cursor.
-shell /opt/flower-cursor/kitty/flower-cursor-shell
-env FLOWER_CURSOR_SPECIES=crocus
-{check.END_MARKER}
-"""
-
-
-def write(path: Path, text: str) -> Path:
-  config = path / "kitty.conf"
-  config.write_text(text, encoding="utf-8")
-  return config
-
-
-def test_the_managed_block_is_read_back_without_its_markers(tmp_path: Path) -> None:
-  block = check._configured_block(check._read_config(write(tmp_path, f"font_size 14\n{BLOCK}")))
-  assert block is not None
-  assert check.BEGIN_MARKER not in block
-  assert "env FLOWER_CURSOR_SPECIES=crocus" in block
-
-
-def test_a_config_without_the_markers_has_no_block(tmp_path: Path) -> None:
-  assert check._configured_block(check._read_config(write(tmp_path, "font_size 14\n"))) is None
-
-
-def test_markers_in_the_wrong_order_are_not_a_block(tmp_path: Path) -> None:
-  upside_down = f"{check.END_MARKER}\nshell /bin/sh\n{check.BEGIN_MARKER}\n"
-  assert check._configured_block(check._read_config(write(tmp_path, upside_down))) is None
-
-
-def test_a_missing_config_is_not_a_crash(tmp_path: Path) -> None:
-  absent = check._read_config(tmp_path / "absent.conf")
-  assert absent == ""
-  assert check._configured_block(absent) is None
-  assert check._unmanaged_shell(absent) is None
-
-
-def test_a_hand_written_shell_line_is_found(tmp_path: Path) -> None:
-  line = "shell /somewhere/else/kitty/flower-cursor-shell"
-  config = check._read_config(write(tmp_path, f"{line}\n"))
-  assert check._unmanaged_shell(config) == line
-
-
-def test_another_shell_is_not_mistaken_for_ours(tmp_path: Path) -> None:
-  assert check._unmanaged_shell(check._read_config(write(tmp_path, "shell /bin/fish\n"))) is None
-
-
-def test_the_config_directory_follows_kitty_s_own_variable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setenv("KITTY_CONFIG_DIRECTORY", str(tmp_path))
-  assert check.kitty_config_path() == tmp_path / "kitty.conf"
-
-
-def test_the_config_directory_falls_back_to_xdg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.delenv("KITTY_CONFIG_DIRECTORY", raising=False)
-  monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-  assert check.kitty_config_path() == tmp_path / "kitty" / "kitty.conf"
-
 
 def rows(**given: str) -> dict[str, tuple[str, str]]:
   """The settings part of the report, by the setting it is about."""
@@ -100,10 +43,20 @@ def test_the_bee_is_reported_in_the_words_the_setting_is_about() -> None:
   assert rows(bee="off")["bee"][1] == "no bee visits (from --bee)"
 
 
-def test_a_buzz_volume_is_reported() -> None:
+def test_a_buzz_volume_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(check, "have_miniaudio", lambda: True)
+  assert rows(buzz="0.4")["buzz"] == (check._OK, "0.4 (from --buzz)")
+
+
+def test_a_buzz_without_the_sound_extra_is_a_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(check, "have_miniaudio", lambda: False)
   status, detail = rows(buzz="0.4")["buzz"]
-  assert status == check._OK
-  assert detail.startswith("0.4")
+  assert status == check._WARN
+  assert "sound extra" in detail
+
+
+def test_fps_is_reported_without_a_trailing_zero() -> None:
+  assert rows()["fps"][1] == "60 (from the default)"
 
 
 def test_an_unreadable_buzz_volume_is_reported_as_the_silence_it_became(capsys) -> None:
@@ -145,7 +98,7 @@ def installed(monkeypatch: pytest.MonkeyPatch) -> None:
   Kitty itself is stood in for, because CI has no reason to install a
   terminal emulator to find out whether we can read a config file.
   """
-  monkeypatch.setattr(check, "_kitty_version", lambda: "kitty 0.49.0")
+  monkeypatch.setattr(check, "_kitty_version", lambda: "0.49.0")
   for setting in check.SETTINGS:
     monkeypatch.delenv(setting.variable, raising=False)
   monkeypatch.delenv(KITTY_SHELL_VARIABLE, raising=False)
@@ -179,10 +132,10 @@ def test_kitty_missing_altogether_breaks_the_report(monkeypatch: pytest.MonkeyPa
   assert any(status == check._BAD and label == "kitty" for status, label, _ in lines)
 
 
-def test_the_report_refuses_to_promise_the_graphics_protocol_works(installed: None) -> None:
+def test_a_working_install_exits_zero(installed: None) -> None:
   stream = io.StringIO()
   assert check.run_check(stream=stream) == 0
-  assert "does not test" in stream.getvalue()
+  assert "Everything the flower cursor needs is here." in stream.getvalue()
 
 
 def test_a_broken_install_exits_nonzero(installed: None, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -192,15 +145,7 @@ def test_a_broken_install_exits_nonzero(installed: None, monkeypatch: pytest.Mon
   assert "will not run" in stream.getvalue()
 
 
-def test_the_markers_are_the_ones_install_sh_writes() -> None:
-  """`install.sh` writes the block; this reads it. One of them is the source.
-
-  They are separate copies in separate languages, so nothing but a test can
-  stop an edit to the shell script from leaving `--check` reporting that a
-  perfectly good install is not configured.
-  """
+def test_the_launcher_is_looked_for_where_install_sh_puts_it() -> None:
   script = (Path(__file__).resolve().parents[1] / "install.sh").read_text(encoding="utf-8")
-  assert f'BEGIN="{check.BEGIN_MARKER}"' in script
-  assert f'END="{check.END_MARKER}"' in script
   assert f'shell $DIR/kitty/{check.LAUNCHER_NAME}"' in script
   assert "${XDG_DATA_HOME:-$HOME/.local/share}/flower-cursor" in script

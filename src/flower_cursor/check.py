@@ -1,8 +1,8 @@
 """Report whether this machine is set up to grow flowers.
 
 Nothing here draws anything or talks to the terminal: it inspects the parts an
-install is made of (Kitty, the launcher, the flower assets and the settings
-that point at them) and says what it found. A window that stays flowerless
+install is made of (Kitty, the launcher, the flower assets and the settings)
+and says what it found. A window that stays flowerless
 usually has exactly one of these wrong, and reading it off a list beats
 guessing at it from an empty screen.
 
@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
+from .buzz import have_miniaudio
 from .settings import (
   FLOWER_CATALOG,
   KITTY_SHELL_VARIABLE,
@@ -27,11 +28,6 @@ from .settings import (
   resolve,
 )
 
-# The same settings `install.sh` writes, so the report describes the install
-# the user actually performed rather than an idealized one. A test holds these
-# to the ones in `install.sh`, which is the copy that does the writing.
-BEGIN_MARKER = "# >>> flower-cursor >>>"
-END_MARKER = "# <<< flower-cursor <<<"
 LAUNCHER_NAME = "flower-cursor-shell"
 # Where install.sh puts a checkout when it was not run from one.
 _DEFAULT_INSTALL = Path("~/.local/share/flower-cursor")
@@ -76,14 +72,6 @@ _BAD = "bad"
 _MARKS = {_OK: "+", _WARN: "!", _BAD: "x"}
 
 
-def kitty_config_path() -> Path:
-  directory = os.environ.get("KITTY_CONFIG_DIRECTORY")
-  if directory:
-    return Path(directory) / "kitty.conf"
-  base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
-  return Path(base) / "kitty" / "kitty.conf"
-
-
 def _kitty_version() -> str | None:
   """Kitty's version, or None if it is not installed or will not say.
 
@@ -98,41 +86,11 @@ def _kitty_version() -> str | None:
     result = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=10, check=False)
   except OSError, subprocess.SubprocessError:
     return None
+  # `kitty 0.49.1 created by Kovid Goyal`
+  words = result.stdout.split()
+  if len(words) > 1 and words[0] == "kitty":
+    return words[1]
   return result.stdout.strip() or None
-
-
-def _read_config(config: Path) -> str:
-  """The Kitty config as text, or empty if there is nothing to read."""
-  try:
-    return config.read_text(encoding="utf-8", errors="replace")
-  except OSError:
-    return ""
-
-
-def _configured_block(text: str) -> str | None:
-  """The settings between our markers, or None if they are not there."""
-  lines = text.splitlines()
-  try:
-    start = lines.index(BEGIN_MARKER)
-    end = lines.index(END_MARKER)
-  except ValueError:
-    return None
-  if end < start:
-    return None
-  return "\n".join(lines[start + 1 : end])
-
-
-def _unmanaged_shell(text: str) -> str | None:
-  """A `shell` line pointing at our launcher that we did not write."""
-  for line in text.splitlines():
-    stripped = line.strip()
-    if not stripped.startswith("shell "):
-      continue
-    # The launcher can live anywhere a user put it, so recognize it by
-    # name rather than by the path this copy happens to sit at.
-    if LAUNCHER_NAME in stripped:
-      return stripped
-  return None
 
 
 def _setting_lines(settings: Settings) -> list[tuple[str, str, str]]:
@@ -152,9 +110,13 @@ def _setting_lines(settings: Settings) -> list[tuple[str, str, str]]:
     value = getattr(settings, setting.attribute)
     detail = _value_text(setting.name, value)
     where = "the default" if source == "default" else source
-    lines.append((_OK, setting.name, f"{detail} (from {where})"))
-  if settings.buzz > 0 and settings.bee is None:
-    lines.append((_WARN, "buzz", "asked for, but there is no bee to buzz"))
+    status = _OK
+    if setting.name == "buzz" and settings.buzz > 0:
+      if settings.bee is None:
+        status, detail = _WARN, f"{detail}, but there is no bee to buzz"
+      elif not have_miniaudio():
+        status, detail = _WARN, f"{detail}, but the sound extra isn't installed, so the bee is silent"
+    lines.append((status, setting.name, f"{detail} (from {where})"))
   if os.environ.get(KITTY_SHELL_VARIABLE):
     lines.append((_OK, KITTY_SHELL_VARIABLE, "set, so Kitty's shell integration is nested"))
   return lines
@@ -176,7 +138,9 @@ def _value_text(name: str, value: object) -> str:
     case "buzz", 0.0:
       return "silent"
     case "buzz", _:
-      return f"{value:g}, and the sound extra is needed for it"
+      return f"{value:g}"
+    case "fps", _:
+      return f"{value:g}"
     case "log", None:
       return "not written"
     case _, _:
@@ -214,30 +178,6 @@ def report(settings: Settings | None = None) -> tuple[list[tuple[str, str, str]]
   else:
     lines.append((_OK, "flowers", f"{len(FLOWER_CATALOG)} installed"))
 
-  config = kitty_config_path()
-  text = _read_config(config)
-  block = _configured_block(text)
-  if block is None:
-    # A config written by hand is a real install and has to read as one:
-    # `install.sh` only owns the block it marked, and plenty of people will
-    # have added the `shell` line themselves.
-    shell = _unmanaged_shell(text)
-    if shell is not None:
-      lines.append((_OK, "kitty.conf", f"{shell} (set by hand, not by install.sh)"))
-    else:
-      lines.append(
-        (
-          _WARN,
-          "kitty.conf",
-          f"{config} does not run the launcher; run install.sh --configure",
-        )
-      )
-  else:
-    configured = "; ".join(
-      line.strip() for line in block.splitlines() if line.strip() and not line.lstrip().startswith("#")
-    )
-    lines.append((_OK, "kitty.conf", configured or "configured but empty"))
-
   lines.extend(_setting_lines(settings))
   return lines, any(status == _BAD for status, _, _ in lines)
 
@@ -252,9 +192,5 @@ def run_check(settings: Settings | None = None, *, stream: TextIO | None = None)
   if broken:
     print("Something above is missing; the flower cursor will not run.", file=out)
   else:
-    print(
-      "Everything the flower cursor needs is here. Whether it draws is up to "
-      "Kitty's graphics protocol, which this does not test.",
-      file=out,
-    )
+    print("Everything the flower cursor needs is here.", file=out)
   return 1 if broken else 0

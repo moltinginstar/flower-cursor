@@ -303,7 +303,7 @@ def _open_miniaudio(sample_rate: int) -> Device:
   )
 
 
-def _have_miniaudio() -> bool:
+def have_miniaudio() -> bool:
   """Whether the optional backend is installed, without paying to import it."""
   return importlib.util.find_spec("miniaudio") is not None
 
@@ -332,7 +332,7 @@ class BeeBuzz:
     volume: float = 1.0,
     sample_rate: int = SAMPLE_RATE,
     open_device: Callable[[int], Device] = _open_miniaudio,
-    backend_installed: Callable[[], bool] = _have_miniaudio,
+    backend_installed: Callable[[], bool] = have_miniaudio,
     report: Callable[[str], None] | None = None,
   ) -> None:
     self.voice = Voice(sample_rate=sample_rate, volume=volume)
