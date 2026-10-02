@@ -139,7 +139,7 @@ def test_zero_seconds_is_a_setting_rather_than_a_way_to_say_off():
 def test_every_bundled_flower_resolves_to_its_own_artwork():
   for name, manifest in FLOWER_MANIFESTS.items():
     settings = resolve({"species": name}, {})
-    assert settings.species_name == name
+    assert settings.flowers[0][1] == name
     assert settings.manifest == manifest
   assert resolve({}, {}).manifest == DEFAULT_MANIFEST
 
@@ -150,12 +150,12 @@ def test_artwork_of_your_own_is_named_by_path(tmp_path):
   settings = resolve({"species": str(manifest)}, {})
   assert settings.manifest == manifest
   # Nothing in the catalog to name, and nothing that second-guesses it.
-  assert settings.species_name is None
+  assert settings.flowers[0][1] is None
 
 
 def test_a_path_that_is_not_there_is_a_typo_rather_than_artwork(capsys, tmp_path):
   missing = tmp_path / "nowhere.json"
-  assert resolve({"species": str(missing)}, {}).species_name == DEFAULT_SPECIES
+  assert resolve({"species": str(missing)}, {}).flowers[0][1] == DEFAULT_SPECIES
   assert str(missing) in capsys.readouterr().err
 
 

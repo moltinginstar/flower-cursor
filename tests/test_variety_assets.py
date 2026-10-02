@@ -18,7 +18,6 @@ from flower_cursor.observer import FLOWER_MANIFESTS
 
 ROOT = Path(__file__).resolve().parents[1]
 NEW_SPECIES = ("daisy", "crocus", "poppy", "dahlia", "orchid")
-PUBLIC_SPECIES = ("anemone", "cornflower", *NEW_SPECIES)
 GROUP_COUNTS = {
   "anemone": 6,
   "cornflower": 18,

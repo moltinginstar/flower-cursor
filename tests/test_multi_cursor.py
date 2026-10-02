@@ -114,8 +114,7 @@ def test_a_command_that_places_nothing_asks_for_no_clearing() -> None:
 @pytest.mark.parametrize(
   "event",
   [
-    ScreenErased(full_reset=False),
-    ScreenErased(full_reset=True),
+    ScreenErased(),
     AltScreenChange(active=True),
     AltScreenChange(active=False),
   ],

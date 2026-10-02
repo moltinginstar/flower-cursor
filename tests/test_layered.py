@@ -11,6 +11,7 @@ from flower_cursor.lifecycle import CursorCell, FlowerInstance
 
 A = CursorCell(4, 8)
 B = CursorCell(4, 20)
+C = CursorCell(12, 3)
 
 
 @pytest.fixture
@@ -116,6 +117,30 @@ def test_dead_stalk_keeps_debris_but_return_creates_a_new_bud(manifest):
   assert runtime.active.pose.stem == 0
   runtime.update(0.55)
   assert original not in runtime.flowers
+
+
+def test_repeated_reversals_keep_the_existing_flowers(manifest):
+  runtime = LayeredRuntime(manifest)
+  flowers = {}
+  for cell in (A, B, A, B, A, B, A):
+    runtime.move_to(cell)
+    if cell in flowers:
+      assert runtime.active is flowers[cell]
+    flowers[cell] = runtime.active
+    runtime.update(0.05)
+  assert len(runtime.flowers) == 2
+  assert runtime.active is flowers[A]
+
+
+def test_rapid_moves_keep_independent_flowers_until_each_has_withered(manifest):
+  runtime = LayeredRuntime(manifest)
+  for cell in (A, B, C):
+    runtime.move_to(cell)
+    runtime.update(0.04)
+  assert [f.flower.cell for f in runtime.flowers] == [A, B, C]
+  assert runtime.active.flower.cell == C
+  runtime.update(3.0)
+  assert [f.flower.cell for f in runtime.flowers] == [C]
 
 
 def test_idle_uses_wall_time_while_growth_keeps_double_speed(manifest):

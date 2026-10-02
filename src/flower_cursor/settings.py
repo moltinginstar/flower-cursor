@@ -255,7 +255,6 @@ SETTINGS = (
     development=True,
   ),
 )
-SETTINGS_BY_NAME = {setting.name: setting for setting in SETTINGS}
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,14 +299,6 @@ class Settings:
     For `cycle` and `random`, the first flower of the catalog.
     """
     return self.flowers[0][0]
-
-  @property
-  def species_name(self) -> str | None:
-    """The catalog name, or None when the artwork is the user's own.
-
-    For `cycle` and `random`, the first flower of the catalog.
-    """
-    return self.flowers[0][1]
 
 
 def resolve(

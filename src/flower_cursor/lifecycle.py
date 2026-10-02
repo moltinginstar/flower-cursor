@@ -42,10 +42,6 @@ class FlowerPose:
   maturity: float = 0.0
 
   @property
-  def opacity(self) -> float:
-    return 1.0
-
-  @property
   def collapse(self) -> float:
     return smoothstep((0.50 - self.vitality) / 0.46)
 
@@ -170,59 +166,3 @@ class FlowerInstance:
   @property
   def dead(self) -> bool:
     return not self.active and self._vitality.value < 0.020
-
-
-class FlowerLifecycle:
-  """Manage active and recently departed flowers independently."""
-
-  def __init__(self, *, retain_departures: bool = True) -> None:
-    self._flowers: list[FlowerInstance] = []
-    self._next_identifier = 1
-    self._active_identifier: int | None = None
-    self._retain_departures = retain_departures
-
-  @property
-  def flowers(self) -> tuple[FlowerInstance, ...]:
-    return tuple(self._flowers)
-
-  @property
-  def active(self) -> FlowerInstance | None:
-    return next(
-      (flower for flower in self._flowers if flower.identifier == self._active_identifier),
-      None,
-    )
-
-  def reset(self) -> None:
-    self._flowers.clear()
-    self._active_identifier = None
-
-  def move_to(self, cell: CursorCell) -> FlowerInstance:
-    """Move the logical cursor immediately and retarget the visible flowers."""
-    current = self.active
-    if current is not None and current.cell == cell:
-      return current
-    if current is not None:
-      if self._retain_departures:
-        current.begin_withering()
-      else:
-        self._flowers.remove(current)
-
-    returning = (
-      next((flower for flower in self._flowers if flower.cell == cell), None) if self._retain_departures else None
-    )
-    if returning is None:
-      returning = FlowerInstance.bud(self._next_identifier, cell)
-      self._next_identifier += 1
-      self._flowers.append(returning)
-    else:
-      returning.restore()
-    self._active_identifier = returning.identifier
-    return returning
-
-  def update(self, duration: float) -> None:
-    require_duration(duration)
-    for flower in self._flowers:
-      flower.update(duration)
-    self._flowers[:] = [flower for flower in self._flowers if not flower.dead]
-    if self._active_identifier is not None and self.active is None:
-      self._active_identifier = None

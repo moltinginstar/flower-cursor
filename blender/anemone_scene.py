@@ -18,7 +18,6 @@ class FlowerStyle:
   filament_color: tuple[float, float, float, float]
   stem_color: tuple[float, float, float, float]
   leaf_color: tuple[float, float, float, float]
-  petal_profile: str = "round"
   leaf_profile: str = "lance"
   petal_count: int = 8
   petal_length: float = 0.82
@@ -38,7 +37,6 @@ STYLE = FlowerStyle(
   filament_color=(1.00, 0.76, 0.18, 1.0),
   stem_color=(0.06, 0.26, 0.09, 1.0),
   leaf_color=(0.10, 0.42, 0.13, 0.94),
-  petal_profile="round",
   leaf_profile="lance",
   petal_count=6,
   petal_length=0.61,

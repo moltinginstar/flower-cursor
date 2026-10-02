@@ -5,9 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 
-from .manifest import manifest_data
 from .settings import DEFAULT_SPECIES
 
 
@@ -28,10 +26,6 @@ class SpeciesMetadata:
   shedding_groups: tuple[SheddingGroup, ...]
   shedding_order: tuple[int, ...]
   landing_support_bounds: tuple[tuple[float, float], tuple[float, float]] | None = None
-
-
-def load_species_metadata(manifest_path: Path, *, selected_species: str | None = None) -> SpeciesMetadata:
-  return metadata_from_manifest(manifest_data(manifest_path), selected_species=selected_species)
 
 
 def metadata_from_manifest(data: Mapping[str, object], *, selected_species: str | None = None) -> SpeciesMetadata:

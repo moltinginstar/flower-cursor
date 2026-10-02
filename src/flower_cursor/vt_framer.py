@@ -77,8 +77,6 @@ class ScreenErased:
   multiple-cursors protocol has to drop them too.
   """
 
-  full_reset: bool
-
 
 @dataclass(frozen=True, slots=True)
 class MultipleCursors:
@@ -209,7 +207,7 @@ class VTFramer:
         # A reset restores every mode's default, and DECTCEM's default
         # is a visible caret.
         self._extra_events.append(CursorVisibility(visible=True))
-        return ScreenErased(full_reset=True)
+        return ScreenErased()
     return None
 
   def _escape_intermediate(self, byte: int) -> Event | None:
@@ -331,13 +329,13 @@ class VTFramer:
     if final == 0x4A and private in (0, 0x3F) and not intermediates:  # J
       values = _numeric_parameters(parameters)
       if values and values[0] in _ERASING_ED_PARAMETERS:
-        return ScreenErased(full_reset=False)
+        return ScreenErased()
     if final == 0x70 and not private and intermediates == b"!":  # ! p: DECSTR
       # A soft reset drops the extra cursors exactly as RIS does; it
       # leaves the screen alone, so it is not reported as a full reset.
       # DECTCEM is one of the modes it puts back, so the caret returns.
       self._extra_events.append(CursorVisibility(visible=True))
-      return ScreenErased(full_reset=False)
+      return ScreenErased()
     return None
 
   def _finish_string(self) -> Event | None:

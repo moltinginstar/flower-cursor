@@ -145,22 +145,22 @@ def test_a_slow_transfer_is_never_truncated_by_time() -> None:
 
 
 def test_screen_erasures_that_drop_extra_cursors_are_reported() -> None:
-  assert _events(b"\x1b[2J") == [ScreenErased(full_reset=False)]
-  assert _events(b"\x1b[3J") == [ScreenErased(full_reset=False)]
-  assert _events(b"\x1b[22J") == [ScreenErased(full_reset=False)]
-  assert _events(b"\x1bc") == [ScreenErased(full_reset=True), CursorVisibility(visible=True)]
+  assert _events(b"\x1b[2J") == [ScreenErased()]
+  assert _events(b"\x1b[3J") == [ScreenErased()]
+  assert _events(b"\x1b[22J") == [ScreenErased()]
+  assert _events(b"\x1bc") == [ScreenErased(), CursorVisibility(visible=True)]
   # A line-scoped erase leaves the extra cursors alone.
   assert _events(b"\x1b[0J") == []
   assert _events(b"\x1b[J") == []
   assert _events(b"\x1b[2K") == []
   # screen.c runs DECSED through the same erase as ED, and routes DECSTR
   # through the same reset as RIS, so both drop the extra cursors too.
-  assert _events(b"\x1b[?2J") == [ScreenErased(full_reset=False)]
-  assert _events(b"\x1b[?3J") == [ScreenErased(full_reset=False)]
+  assert _events(b"\x1b[?2J") == [ScreenErased()]
+  assert _events(b"\x1b[?3J") == [ScreenErased()]
   assert _events(b"\x1b[?0J") == []
   # DECSTR leaves the screen itself alone, so it is not a full reset.
   assert _events(b"\x1b[!p") == [
-    ScreenErased(full_reset=False),
+    ScreenErased(),
     CursorVisibility(visible=True),
   ]
 
@@ -184,6 +184,6 @@ def test_cursor_visibility_requests_are_reported() -> None:
   # A reset puts the caret back, because a visible caret is DECTCEM's default.
   assert _events(b"\x1b[?25l\x1bc") == [
     CursorVisibility(visible=False),
-    ScreenErased(full_reset=True),
+    ScreenErased(),
     CursorVisibility(visible=True),
   ]

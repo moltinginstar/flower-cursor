@@ -240,8 +240,8 @@ assert not Path(flower_cursor.__file__).resolve().is_relative_to(checkout)
 settings = resolve({"species": "cornflower"}, {})
 manifest = settings.manifest
 assert not manifest.resolve().is_relative_to(checkout)
-runtime = LayeredRuntime(manifest, species=settings.species_name, bee_rng=random.Random(4))
-compositor = LayeredCompositor(manifest, species=settings.species_name)
+runtime = LayeredRuntime(manifest, species="cornflower", bee_rng=random.Random(4))
+compositor = LayeredCompositor(manifest, species="cornflower")
 runtime.move_to(CursorCell(4, 8))
 runtime.update(1.2)
 visual = runtime.visuals()[0]

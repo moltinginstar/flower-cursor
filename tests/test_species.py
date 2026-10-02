@@ -5,6 +5,7 @@ import pytest
 from flower_cursor.bee import IdleBee
 from flower_cursor.geometry import ViewportGeometry
 from flower_cursor.lifecycle import CursorCell, FlowerInstance
+from flower_cursor.manifest import manifest_data
 from flower_cursor.observer import (
   DEFAULT_MANIFEST,
   DEFAULT_SPECIES,
@@ -15,13 +16,13 @@ from flower_cursor.observer import (
 )
 from flower_cursor.settings import resolve
 from flower_cursor.shedding import SheddingFlower
-from flower_cursor.species import load_species_metadata, metadata_from_manifest
+from flower_cursor.species import metadata_from_manifest
 
 CORNFlower_ORDER = (1, 7, 3, 9, 5, 11, 0, 6, 2, 8, 4, 10, 12, 15, 13, 16, 14, 17)
 
 
 def test_the_default_anemone_sheds_six_petals_in_its_own_order() -> None:
-  metadata = load_species_metadata(DEFAULT_MANIFEST, selected_species=DEFAULT_SPECIES)
+  metadata = metadata_from_manifest(manifest_data(DEFAULT_MANIFEST), selected_species=DEFAULT_SPECIES)
 
   assert [group.layer for group in metadata.shedding_groups] == [f"petal_{i}" for i in range(6)]
   assert metadata.shedding_order == (1, 4, 0, 5, 2, 3)
@@ -143,10 +144,10 @@ def test_flower_descriptions_are_user_facing_and_name_the_poppy_correctly() -> N
 
 
 def test_the_cli_grows_each_public_flower_and_falls_back_from_unknown_names(capsys) -> None:
-  assert [resolve({"species": name}, {}).species_name for name in PUBLIC_FLOWERS] == list(PUBLIC_FLOWERS)
+  assert [resolve({"species": name}, {}).flowers[0][1] for name in PUBLIC_FLOWERS] == list(PUBLIC_FLOWERS)
   # An unknown name is a typo: one line on stderr rather than a window that
   # refuses to open.
-  assert resolve({"species": "rose"}, {}).species_name == DEFAULT_SPECIES
+  assert resolve({"species": "rose"}, {}).flowers[0][1] == DEFAULT_SPECIES
   assert "rose" in capsys.readouterr().err
 
 
