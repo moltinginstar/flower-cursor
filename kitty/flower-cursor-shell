@@ -12,11 +12,11 @@ set -u
 # database, then /bin/sh. The two have to agree, because which one runs a
 # window depends only on whether Python could be started.
 passwd_shell() {
-  user=$(id -un 2> /dev/null) || return 0
-  if command -v getent > /dev/null 2>&1; then
-    getent passwd "$user" 2> /dev/null | awk -F: 'NR == 1 { print $7 }'
-  elif command -v dscl > /dev/null 2>&1; then
-    dscl . -read "/Users/$user" UserShell 2> /dev/null | awk 'NR == 1 { print $2 }'
+  user=$(id -un 2>/dev/null) || return 0
+  if command -v getent >/dev/null 2>&1; then
+    getent passwd "$user" 2>/dev/null | awk -F: 'NR == 1 { print $7 }'
+  elif command -v dscl >/dev/null 2>&1; then
+    dscl . -read "/Users/$user" UserShell 2>/dev/null | awk 'NR == 1 { print $2 }'
   fi
 }
 
@@ -30,11 +30,11 @@ shell_name() {
 
 real_shell() {
   case "$(shell_name)" in
-    '' | flower-cursor | flower-cursor-shell)
-      shell=$(passwd_shell)
-      [ -n "$shell" ] && echo "$shell" || echo "/bin/sh"
-      ;;
-    *) echo "$SHELL" ;;
+  '' | flower-cursor | flower-cursor-shell)
+    shell=$(passwd_shell)
+    [ -n "$shell" ] && echo "$shell" || echo "/bin/sh"
+    ;;
+  *) echo "$SHELL" ;;
   esac
 }
 
@@ -53,7 +53,7 @@ kitten_exe() {
       }
     done
   fi
-  command -v kitten 2> /dev/null
+  command -v kitten 2>/dev/null
 }
 
 # Hand the window straight to the shell, integration and all: the recovery
@@ -79,8 +79,8 @@ if [ "$#" -gt 0 ]; then
   # Not `real_shell`, because a passwd lookup forks.
   name=${SHELL-}
   case "${name##*/}" in
-    '' | flower-cursor | flower-cursor-shell) exec /bin/sh "$@" ;;
-    *) exec "$SHELL" "$@" ;;
+  '' | flower-cursor | flower-cursor-shell) exec /bin/sh "$@" ;;
+  *) exec "$SHELL" "$@" ;;
   esac
 fi
 
@@ -107,7 +107,7 @@ if [ -x "$ROOT/.venv/bin/flower-cursor" ]; then
 elif [ -x "$ROOT/.venv/bin/python" ]; then
   PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" \
     exec "$ROOT/.venv/bin/python" -m flower_cursor.observer
-elif command -v flower-cursor > /dev/null 2>&1; then
+elif command -v flower-cursor >/dev/null 2>&1; then
   exec flower-cursor
 fi
 

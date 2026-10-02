@@ -14,7 +14,7 @@ uninstall=0
 dry_run=0
 
 usage() {
-  cat << 'USAGE'
+  cat <<'USAGE'
 Usage: install.sh [options]
 
   --species NAME   grow NAME instead of the default flower (or cycle/random)
@@ -27,43 +27,43 @@ USAGE
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --species)
-      species="${2-}"
-      [ -n "$species" ] || {
-        echo "install.sh: --species needs a name" >&2
-        exit 2
-      }
-      shift 2
-      ;;
-    --species=*)
-      species="${1#--species=}"
-      shift
-      ;;
-    --configure)
-      configure=1
-      shift
-      ;;
-    --uninstall)
-      uninstall=1
-      shift
-      ;;
-    --dry-run)
-      dry_run=1
-      shift
-      ;;
-    -h | --help)
-      usage
-      exit 0
-      ;;
-    *)
-      echo "install.sh: unknown option $1" >&2
-      usage >&2
+  --species)
+    species="${2-}"
+    [ -n "$species" ] || {
+      echo "install.sh: --species needs a name" >&2
       exit 2
-      ;;
+    }
+    shift 2
+    ;;
+  --species=*)
+    species="${1#--species=}"
+    shift
+    ;;
+  --configure)
+    configure=1
+    shift
+    ;;
+  --uninstall)
+    uninstall=1
+    shift
+    ;;
+  --dry-run)
+    dry_run=1
+    shift
+    ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "install.sh: unknown option $1" >&2
+    usage >&2
+    exit 2
+    ;;
   esac
 done
 
-have() { command -v "$1" > /dev/null 2>&1; }
+have() { command -v "$1" >/dev/null 2>&1; }
 
 # Everything here is a line of text; the only thing that ever writes it out is
 # `apply`, so --dry-run has one place to stop rather than a flag in every step.
@@ -119,12 +119,12 @@ apply() {
     cp "$KITTY_CONFIG" "$backup"
     echo "Backed up your old config to $backup."
   fi
-  cat > "$KITTY_CONFIG.flower-cursor.tmp"
+  cat >"$KITTY_CONFIG.flower-cursor.tmp"
   mv "$KITTY_CONFIG.flower-cursor.tmp" "$KITTY_CONFIG"
 }
 
 restart_notice() {
-  cat << 'NOTICE'
+  cat <<'NOTICE'
 
 Kitty reads its config when it starts, so restart Kitty (or reload the config
 with ctrl+cmd+, on macOS, ctrl+shift+f5 elsewhere) to see the change. Windows
@@ -133,7 +133,7 @@ NOTICE
 }
 
 if [ "$uninstall" -eq 1 ]; then
-  if ! grep -qxF "$BEGIN" "$KITTY_CONFIG" 2> /dev/null; then
+  if ! grep -qxF "$BEGIN" "$KITTY_CONFIG" 2>/dev/null; then
     echo "Nothing to remove: $KITTY_CONFIG has no flower-cursor settings in it."
     exit 0
   fi
@@ -157,8 +157,8 @@ have uv || {
 is_checkout() { [ -f "$1/pyproject.toml" ] && [ -f "$1/kitty/flower-cursor-shell" ]; }
 here=""
 case "${0-}" in
-  */*) candidate="${0%/*}" ;;
-  *) candidate="." ;;
+*/*) candidate="${0%/*}" ;;
+*) candidate="." ;;
 esac
 is_checkout "$candidate" && here="$(CDPATH= cd -- "$candidate" && pwd)"
 if [ -n "$here" ]; then
@@ -193,7 +193,7 @@ if [ "$configure" -eq 1 ]; then
   } | apply
   [ "$dry_run" -eq 1 ] || echo "Wrote the flower-cursor settings to $KITTY_CONFIG."
 else
-  cat << CONFIG
+  cat <<CONFIG
 
 Add this to $KITTY_CONFIG:
 
