@@ -13,6 +13,7 @@ its pixels are the compositor's business.
 
 from __future__ import annotations
 
+import os
 import random
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -23,6 +24,12 @@ from .manifest import manifest_data
 from .pose_library import PoseLibrary
 from .settings import CYCLE, FIXED, RANDOM
 from .species import SpeciesMetadata, metadata_from_manifest
+
+# For recording the demo: when this file exists, the next bloom under `cycle`
+# is the species it names, and the cycle carries on from there, so the take
+# can know which flower the bee will visit. The file is used up by that bloom.
+# Nothing sets it outside tools/demo_take.py.
+DEMO_CUE = os.environ.get("FLOWER_CURSOR_DEMO_CUE")
 
 
 @dataclass(frozen=True, eq=False, slots=True)
@@ -96,7 +103,20 @@ class Garden:
       if self._last is not None and index >= self._last:
         index += 1
     else:
+      if DEMO_CUE and os.path.exists(DEMO_CUE):
+        self._cue(DEMO_CUE)
       index = self._next
       self._next = (self._next + 1) % count
     self._last = index
     return load_species(*self._flowers[index])
+
+  def _cue(self, path: str) -> None:
+    try:
+      with open(path) as cue:
+        name = cue.read().strip()
+      os.unlink(path)
+    except OSError:
+      return
+    names = [flower_name for _, flower_name in self._flowers]
+    if name in names:
+      self._next = names.index(name)

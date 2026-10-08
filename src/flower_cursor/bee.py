@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,12 @@ DEFAULT_INTERVAL = 90.0
 # Drawn fresh for every wait, because a visitor that arrives on the same
 # schedule every time reads as a timer rather than as something alive.
 INTERVAL_JITTER = (0.67, 1.33)
+# For recording the demo: when set, a bee comes only while this file exists,
+# and every wait and visit runs at its nominal length, so the take can time
+# the bee to the frame. Nothing sets it outside tools/demo_take.py.
+DEMO_GATE = os.environ.get("FLOWER_CURSOR_DEMO_GATE")
+# And this picks the route the demo's bee flies.
+DEMO_SEED = os.environ.get("FLOWER_CURSOR_DEMO_SEED")
 HOVER_TIME = 2.45
 LANDING_TIME = 2.8
 TOUCHDOWN_TIME = 3.45
@@ -92,7 +99,7 @@ class _FlightLeg:
 
 class IdleBee:
   def __init__(self, rng: random.Random | None = None, *, interval: float = DEFAULT_INTERVAL) -> None:
-    self.rng = rng if rng is not None else random.Random()
+    self.rng = rng if rng is not None else random.Random(DEMO_SEED)
     # The wait draws from a stream of its own, forked from the visit stream
     # without consuming it, so how often a bee comes never changes the
     # route it flies for a given seed.
@@ -139,7 +146,7 @@ class IdleBee:
   def _sample_wait(self) -> None:
     """Start the wait over, with a length this visit does not share."""
     self.idle = 0.0
-    self.wait = self.interval * self._waits.uniform(*INTERVAL_JITTER)
+    self.wait = self.interval * (1.0 if DEMO_GATE else self._waits.uniform(*INTERVAL_JITTER))
 
   @property
   def visible(self) -> bool:
@@ -226,6 +233,8 @@ class IdleBee:
     if not self.visible:
       if self.target is None or head is None or self.idle + 1e-9 < self.wait:
         return
+      if DEMO_GATE and not os.path.exists(DEMO_GATE):
+        return
       self.cell = self.target
       self.generation += 1
       self.age = self.phase = 0.0
@@ -285,12 +294,12 @@ class IdleBee:
     return any(self._outside_edges)
 
   def _sample_visit(self) -> None:
-    timing = self.rng.uniform(0.92, 1.12)
+    timing = 1.0 if DEMO_GATE else self.rng.uniform(0.92, 1.12)
     self.hover_time = HOVER_TIME * timing
     self.landing_time = LANDING_TIME * timing
     self.touchdown_time = TOUCHDOWN_TIME * timing
     self.approach_time = APPROACH_TIME * timing
-    self.rest_time = self.rng.uniform(4.8, 7.2)
+    self.rest_time = 60.0 if DEMO_GATE else self.rng.uniform(4.8, 7.2)
     self._source = (self.rng.randrange(4), self.rng.uniform(0.12, 0.88))
     self._exit = None
     self._bend = self.rng.uniform(-0.2, 0.2)

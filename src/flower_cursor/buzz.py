@@ -18,8 +18,10 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import math
+import os
 import queue
 import random
+import struct
 import threading
 import time
 from array import array
@@ -415,9 +417,16 @@ class BeeBuzz:
       self._requests.put(playing)
 
   def _samples(self) -> Generator[bytes, int]:
-    frames = yield b""
-    while True:
-      frames = yield self.voice.render(frames)
+    # For recording the demo: every block the device asks for, after the wall
+    # clock time it was asked at, so the take can lay the buzz under its video.
+    tape = os.environ.get("FLOWER_CURSOR_BUZZ_TAPE")
+    with open(tape, "ab", buffering=0) if tape else contextlib.nullcontext() as file:
+      frames = yield b""
+      while True:
+        block = self.voice.render(frames)
+        if file is not None:
+          file.write(struct.pack("<dI", time.time(), len(block)) + block)
+        frames = yield block
 
   def update(self, bee, *, audible: bool = True) -> None:
     """Point the voice at the bee's current state; cheap enough per tick."""
