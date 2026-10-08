@@ -24,8 +24,9 @@ DEFAULT_INTERVAL = 90.0
 # schedule every time reads as a timer rather than as something alive.
 INTERVAL_JITTER = (0.67, 1.33)
 # For recording the demo: when set, a bee comes only while this file exists,
-# and every wait and visit runs at its nominal length, so the take can time
-# the bee to the frame. Nothing sets it outside tools/demo_take.py.
+# every wait and flight runs at its nominal length, and the bee stays until
+# it is shooed, so the take can time the bee to the frame. Nothing sets it
+# outside tools/demo_take.py.
 DEMO_GATE = os.environ.get("FLOWER_CURSOR_DEMO_GATE")
 # And this picks the route the demo's bee flies.
 DEMO_SEED = os.environ.get("FLOWER_CURSOR_DEMO_SEED")

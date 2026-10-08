@@ -147,7 +147,7 @@ def test_keys_count_as_typing(data: bytes) -> None:
     b"\x1b[?62;22c",  # device attributes
     b"\x1b]11;rgb:0000/0000/0000\x1b\\",  # a color reply, ST
     b"\x1b]11;rgb:0000/0000/0000\x07",  # a color reply, BEL
-    b"\x1b_Gi=1;OK\x1b\\",  # a graphics acknowledgement
+    b"\x1b_Gi=1;OK\x1b\\",  # a graphics acknowledgment
     b"\x1bP1+r544e=787465726d\x1b\\",  # XTGETTCAP
     b"\x1b[<35;10;5M",  # the pointer moving over an unfocused window
     b"\x1b[A\x1bOB",  # arrows, in both encodings

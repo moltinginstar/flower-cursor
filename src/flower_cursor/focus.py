@@ -51,7 +51,7 @@ def is_typing(data: bytes) -> bool:
   """Whether terminal input holds anything a person typed.
 
   Replies to queries (cursor reports, device attributes, colors, graphics
-  acknowledgements) are always whole escape sequences, and so are mouse
+  acknowledgments) are always whole escape sequences, and so are mouse
   reports, which Kitty sends to a window under the pointer whether or not it
   is focused. A printable character, Enter, Tab, Backspace, a paste or an
   Alt-chord is none of those. Keys that arrive as sequences of their own,
@@ -137,9 +137,10 @@ class FocusFilter:
           break
       else:
         # A partial sequence is held back only while it could still
-        # become a focus report. Anything else (a lone Escape, an
-        # arrow key) goes straight through, because delaying a
-        # keystroke to disambiguate it would be felt.
+        # become a focus report: a lone Escape waits for what follows
+        # it, or for `flush`. Anything else (an arrow key) goes
+        # straight through, because delaying a keystroke to
+        # disambiguate it would be felt.
         if len(tail) < 3 and any(report.startswith(tail) for report in _REPORTS):
           self._pending = bytes(tail)
           return bytes(output), changed

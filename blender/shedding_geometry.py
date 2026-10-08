@@ -21,7 +21,7 @@ from flower_cursor.stalk_motion import wilt_point, wilt_progress
 
 ORIGINAL_STEM_POINT = anemone.stem_point
 # Stills such as the README banner want the same scenes far larger than the
-# runtime's 512px canvas, and only the whole flower: a scale multiplies the
+# 512px canvas they bake at, and only the whole flower: a scale multiplies the
 # render size without moving the camera, and a layer list skips the rest.
 BAKE_SCALE = int(os.environ.get("FLOWER_BAKE_SCALE", "1"))
 BAKE_LAYERS = set(filter(None, os.environ.get("FLOWER_BAKE_LAYERS", "").split(",")))

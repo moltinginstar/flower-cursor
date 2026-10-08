@@ -106,7 +106,7 @@ class MultiCursorTracker:
   def state_reply(self) -> bytes:
     """Build the reply Kitty would have sent had we not cleared its state."""
     groups = b";".join(
-      # Kitty reports anything above a beam as 29, the default shape.
+      # Our shapes above Kitty's own are reported as 29, the default shape.
       b"%d:2:%d:%d" % (min(self._shapes[cell], 29), cell.row + 1, cell.column + 1)
       for cell in self.cells
     )

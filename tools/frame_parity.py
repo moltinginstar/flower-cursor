@@ -4,8 +4,8 @@ Drives each species headless through growth, a full idle cycle, a departure with
 a return mid-wither, and a wither to the end, drawing every visual on every
 step. Record a baseline before a change and compare after it:
 
-    python tools/frame_parity.py --write baseline.json
-    python tools/frame_parity.py --compare baseline.json
+    uv run python tools/frame_parity.py --write baseline.json
+    uv run python tools/frame_parity.py --compare baseline.json
 """
 
 from __future__ import annotations

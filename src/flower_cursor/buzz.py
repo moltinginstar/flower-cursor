@@ -147,7 +147,7 @@ class BuzzState:
 
 
 def buzz_state(bee, *, audible: bool = True) -> BuzzState:
-  """Read a `IdleBee` as loudness and wingbeat pitch.
+  """Read an `IdleBee` as loudness and wingbeat pitch.
 
   Silent unless the bee is on screen in a pane we are drawing. The two
   physical cues are distance from the flower it is visiting, and its wings:
@@ -217,7 +217,7 @@ class Voice:
 
   @property
   def gain(self) -> float:
-    """The amplitude actually being emitted, after the glide."""
+    """The amplitude actually being emitted, after the settle."""
     return self._gain
 
   def silent(self) -> bool:
