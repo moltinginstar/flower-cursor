@@ -5,6 +5,8 @@
 
 Flower Cursor turns Kitty's cursor into a little flower. It blooms wherever your cursor stops and wilts when it moves on. Sit still long enough and it might get a visitor.
 
+<https://github.com/user-attachments/assets/9c1e23bb-1dce-4c83-aff6-88821901b604>
+
 ## Requirements
 
 - [Kitty](https://sw.kovidgoyal.net/kitty/) on macOS or Linux (tested with 0.49)
