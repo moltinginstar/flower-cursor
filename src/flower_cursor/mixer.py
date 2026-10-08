@@ -43,11 +43,6 @@ class Mixer:
         self._device = self._open_device(self.sample_rate)
     return _Channel(self)
 
-  @property
-  def playing(self) -> int:
-    """How many voices are being played."""
-    return len(self._voices)
-
   def _add(self, stream: Generator[bytes, int]) -> None:
     with self._lock:
       if any(voice is stream for voice in self._voices):

@@ -32,8 +32,6 @@ def transmit_png(
   *,
   image_id: int,
   placement_id: int | None = None,
-  columns: int | None = None,
-  rows: int | None = None,
   x_offset: int = 0,
   y_offset: int = 0,
   z_index: int = 1,
@@ -48,13 +46,6 @@ def transmit_png(
   _validate_id("image_id", image_id)
   if placement_id is not None:
     _validate_id("placement_id", placement_id)
-  if columns is None and rows is not None:
-    raise ValueError("columns and rows must be provided together")
-  if columns is not None:
-    if rows is None:
-      raise ValueError("columns and rows must be provided together")
-    if columns < 1 or rows < 1:
-      raise ValueError("columns and rows must be positive")
   if x_offset < 0 or y_offset < 0:
     raise ValueError("pixel offsets must be non-negative")
   if not png:
@@ -67,12 +58,9 @@ def transmit_png(
     more = offset + len(chunk) < len(encoded)
     if offset == 0:
       placement = f",p={placement_id}" if placement_id is not None else ""
-      geometry = f",c={columns},r={rows}" if columns is not None else ""
       pixel_offsets = f",X={x_offset},Y={y_offset}" if x_offset or y_offset else ""
       parameters = (
-        f"a={'T' if place else 't'},f=100,i={image_id}{placement}{geometry}{pixel_offsets},"
-        f"C=1,z={z_index},"
-        f"q=2,m={int(more)}"
+        f"a={'T' if place else 't'},f=100,i={image_id}{placement}{pixel_offsets},C=1,z={z_index},q=2,m={int(more)}"
       )
     else:
       parameters = f"m={int(more)},q=2"

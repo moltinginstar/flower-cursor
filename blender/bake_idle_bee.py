@@ -309,7 +309,7 @@ def pose(scene, rig, wings, legs, index, heading):
   deployed = min(1, landing / 0.35)
   tuck = max(0, (landing - 0.35) / 0.65)
   rig.rotation_euler.z = math.radians(-heading)
-  for pivot, side, foot in legs:
+  for pivot, side, _ in legs:
     pivot.rotation_euler.x = side * (1 - deployed) * 0.95
     pivot.rotation_euler.y = -(1 - deployed) * 0.35
   for pivot, side, hind in wings:

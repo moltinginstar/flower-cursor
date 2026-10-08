@@ -49,10 +49,6 @@ class FlowerRenderer:
       raise ValueError("anchor offsets must be non-negative")
     self.pose_library = pose_library
     self._write = write
-    self._columns = columns
-    self._rows = rows
-    self._anchor_columns = anchor_columns
-    self._anchor_rows = anchor_rows
     self._z_index = z_index
     self._placements: dict[int, tuple[object, bytes, int]] = {}
     self._buffers = {False: self._placements, True: {}}

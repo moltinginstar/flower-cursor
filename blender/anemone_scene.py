@@ -420,7 +420,6 @@ def add_leaf(
 def add_center(
   center_mat: bpy.types.Material,
   filament_mat: bpy.types.Material,
-  petal_open: float,
   head_lean: float,
   flower_height: float,
   droop: float,
@@ -625,7 +624,6 @@ def build_scene(pose_name: str) -> bpy.types.Scene:
   add_center(
     center_mat,
     filament_mat,
-    petal_open,
     head_offset,
     flower_height,
     droop,
