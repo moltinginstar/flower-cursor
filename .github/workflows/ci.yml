@@ -13,6 +13,8 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv run ruff check
       - run: uv run ruff format --check
+      - run: uv run shfmt --diff install.sh kitty/flower-cursor-shell
+      - run: npx --yes prettier@3.9.9 --check .
 
   test:
     runs-on: ubuntu-latest

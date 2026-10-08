@@ -55,6 +55,8 @@ dev = [
   # nothing about how the package installs: `pip install flower-cursor` is
   # still audio-free, and `flower-cursor[sound]` is still how a user asks.
   "miniaudio>=1.71",
+  # shfmt as a wheel, so `make lint` checks the shell scripts without a global install.
+  "shfmt-py>=4.2.0",
 ]
 
 [tool.pytest.ini_options]
