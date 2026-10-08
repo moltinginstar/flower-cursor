@@ -113,7 +113,7 @@ def run(
   stdin_fd = sys.stdin.fileno()
   stdout_fd = sys.stdout.fileno()
   if not os.isatty(stdin_fd) or not os.isatty(stdout_fd):
-    raise OSError("flower cursor requires a TTY on stdin and stdout")
+    raise OSError("flower-cursor: needs a TTY on stdin and stdout")
   old_terminal = termios.tcgetattr(stdin_fd)
 
   child_pid, master_fd = pty.fork()
