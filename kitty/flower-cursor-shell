@@ -102,13 +102,41 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 FLOWER_CURSOR_KITTY_SHELL=on
 export FLOWER_CURSOR_KITTY_SHELL
 
-if [ -x "$ROOT/.venv/bin/flower-cursor" ]; then
-  exec "$ROOT/.venv/bin/flower-cursor"
-elif [ -x "$ROOT/.venv/bin/python" ]; then
-  PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" \
-    exec "$ROOT/.venv/bin/python" -m flower_cursor.observer
-elif command -v flower-cursor >/dev/null 2>&1; then
-  exec flower-cursor
+# The runtime install.sh provisions: a private environment on a uv-managed
+# Python, so neither a system Python upgrade nor the checkout's own
+# development `.venv` can take the interpreter away. Starting it needs no uv
+# and no network, and running its interpreter directly, rather than through
+# `uv run` or an activated environment, leaves PATH and VIRTUAL_ENV exactly as
+# Kitty passed them to the shell inside. `-x` follows the interpreter symlink,
+# so a runtime whose Python has since been removed counts as missing.
+RUNTIME="$ROOT/.runtime"
+REPAIR="run 'sh $ROOT/install.sh' to repair it"
+
+# Set by the bootstrap below when the runtime's interpreter starts but the
+# package will not import: this is that window coming back for its shell.
+if [ -n "${FLOWER_CURSOR_LAUNCH_FAILED-}" ]; then
+  unset FLOWER_CURSOR_LAUNCH_FAILED
+  plain_shell
 fi
 
-plain_shell
+if [ ! -x "$RUNTIME/bin/python" ]; then
+  echo "flower-cursor: no working runtime in $RUNTIME; $REPAIR" >&2
+  plain_shell
+fi
+
+# -I keeps the user's PYTHONPATH and the window's working directory out of
+# the runtime's imports; the environment the shell inherits is untouched.
+# Only the import is guarded: once the observer starts, the shell's exit
+# status is the window's, and the observer hands over to a plain shell
+# itself if it cannot draw.
+exec "$RUNTIME/bin/python" -I -c '
+import os, sys
+try:
+  from flower_cursor.observer import main
+except Exception as error:
+  print(f"flower-cursor: the runtime is broken ({error}); {sys.argv[2]}", file=sys.stderr)
+  os.environ["FLOWER_CURSOR_LAUNCH_FAILED"] = "1"
+  os.execv("/bin/sh", ["/bin/sh", sys.argv[1]])
+sys.argv = ["flower-cursor"]
+sys.exit(main([]))
+' "$0" "$REPAIR"

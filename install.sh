@@ -9,6 +9,7 @@ BEGIN="# >>> flower-cursor >>>"
 END="# <<< flower-cursor <<<"
 
 species=""
+sound=0
 configure=0
 uninstall=0
 dry_run=0
@@ -18,6 +19,7 @@ usage() {
 Usage: install.sh [options]
 
   --species NAME   grow NAME instead of the default flower (or cycle/random)
+  --sound          install the audio backend so the bee can buzz
   --configure      write the Kitty settings for me, keeping a backup
   --uninstall      take those settings back out again
   --dry-run        say what would change, change nothing
@@ -37,6 +39,10 @@ while [ "$#" -gt 0 ]; do
     ;;
   --species=*)
     species="${1#--species=}"
+    shift
+    ;;
+  --sound)
+    sound=1
     shift
     ;;
   --configure)
@@ -176,10 +182,23 @@ else
   [ "$dry_run" -eq 1 ] || git clone --depth 1 "$REPO" "$DIR"
 fi
 
+# Kitty's launcher runs this environment, not the checkout's `.venv`: that one
+# belongs to development, where `uv run` re-syncs it to whatever the checkout
+# currently needs. A uv-managed Python cannot vanish under it the way a system
+# one can when the system's package manager moves on, and an install that
+# fails stops here, before Kitty is pointed at anything.
+RUNTIME="$DIR/.runtime"
+# An existing runtime that already has the audio backend keeps it: an update
+# should not quietly take away a buzz the user asked for last time.
+for found in "$RUNTIME"/lib/python*/site-packages/miniaudio-*.dist-info; do
+  if [ -e "$found" ]; then sound=1; fi
+done
+set -- --directory "$DIR" --locked --no-dev --inexact --managed-python
+if [ "$sound" -eq 1 ]; then set -- "$@" --extra sound; fi
 if [ "$dry_run" -eq 1 ]; then
-  echo "Would run: uv sync --directory $DIR --no-dev --inexact"
+  echo "Would run: UV_PROJECT_ENVIRONMENT=$RUNTIME uv sync $*"
 else
-  uv sync --directory "$DIR" --no-dev --inexact
+  UV_PROJECT_ENVIRONMENT="$RUNTIME" uv sync "$@"
 fi
 
 if [ "$configure" -eq 1 ]; then

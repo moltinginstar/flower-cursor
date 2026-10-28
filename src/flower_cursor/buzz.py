@@ -279,7 +279,7 @@ class Voice:
 
 MISSING_BACKEND = (
   "flower-cursor: buzzing needs the optional sound extra "
-  "(uv sync --extra sound, or pip install 'flower-cursor[sound]'); "
+  "(install.sh --sound, or pip install 'flower-cursor[sound]'); "
   "the bee stays silent"
 )
 

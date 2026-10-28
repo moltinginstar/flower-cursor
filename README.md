@@ -10,7 +10,7 @@ Flower Cursor turns Kitty's cursor into a little flower. It blooms wherever your
 ## Requirements
 
 - [Kitty](https://sw.kovidgoyal.net/kitty/) on macOS or Linux (tested with 0.49)
-- [uv](https://docs.astral.sh/uv/)
+- [uv](https://docs.astral.sh/uv/), to install it
 
 ## Installation
 
@@ -18,7 +18,7 @@ Flower Cursor turns Kitty's cursor into a little flower. It blooms wherever your
 curl -fsSL https://raw.githubusercontent.com/moltinginstar/flower-cursor/main/install.sh | sh
 ```
 
-This clones Flower Cursor into `~/.local/share/flower-cursor` and prints the settings to add to your `kitty.conf`. To clone it somewhere else, put `FLOWER_CURSOR_DIR=/some/path` before `sh`, and use that path below. To have the settings written for you instead:
+This clones Flower Cursor into `~/.local/share/flower-cursor`, sets it up with its own uv-managed Python, and prints the settings to add to your `kitty.conf`. To clone it somewhere else, put `FLOWER_CURSOR_DIR=/some/path` before `sh`, and use that path below. To have the settings written for you instead:
 
 ```bash
 ~/.local/share/flower-cursor/install.sh --configure
@@ -32,7 +32,7 @@ Then restart Kitty or reload its config.
 If nothing happens:
 
 ```bash
-uv run --directory ~/.local/share/flower-cursor flower-cursor --check
+~/.local/share/flower-cursor/.runtime/bin/flower-cursor --check
 ```
 
 ## Configuration
@@ -72,10 +72,10 @@ env FLOWER_CURSOR_BEE=180
 
 After about ninety seconds of stillness, a bee arrives, rests on the bloom for a few seconds, and leaves. Moving the cursor sends it away.
 
-The bee is silent unless you ask for sound, which needs the `sound` extra:
+The bee is silent unless you ask for sound, which needs an audio backend that the installer adds when you pass `--sound`. Later updates keep it.
 
 ```bash
-uv sync --directory ~/.local/share/flower-cursor --no-dev --inexact --extra sound
+~/.local/share/flower-cursor/install.sh --sound
 env FLOWER_CURSOR_BUZZ=0.4   # in kitty.conf
 ```
 
