@@ -24,7 +24,7 @@ classifiers = [
 dependencies = [
   # 11.x publishes no cp314 wheels, so the floor has to be a release that
   # does or a fresh resolve can only satisfy it by building from source.
-  "pillow>=12.0",
+  "pillow>=13.0",
 ]
 
 [project.urls]
@@ -44,9 +44,9 @@ packages = ["src/flower_cursor"]
 
 [dependency-groups]
 dev = [
-  "pytest>=9.1",
+  "pytest>=9.2",
   # `requires-python = ">=3.14"` needs a ruff that knows about 3.14.
-  "ruff>=0.16",
+  "ruff>=0.17",
   # The same backend the `sound` extra installs, repeated because `uv run`
   # re-syncs the environment to the default set and uninstalls anything an
   # earlier `uv sync --extra sound` put there, so a checkout that wants to
